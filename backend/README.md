@@ -40,6 +40,79 @@ python test_api.py
 - `/markets/summary` 返回 4 个 USD 聚合字段
 - `/liquidity-mining` 返回两条挖矿池记录
 
+运行链上动作测试（会执行 supply/borrow/stake）：
+```bash
+# 需要提前设置治理代币地址
+export GOV_TOKEN=0x...
+python test_actions.py
+```
+
+预期输出：
+```
+On-chain actions completed.
+```
+
+再运行 `python test_api.py`，你会看到类似格式的数据：
+
+**/markets**
+```json
+{
+  "items": [
+    {
+      "market": "0x...",
+      "underlying": "0x...",
+      "symbol": "USDC",
+      "decimals": 18,
+      "totalSupply": 2000000000000000000000,
+      "totalBorrows": 100000000000000000000,
+      "totalReserves": 0,
+      "cash": 1900000000000000000000,
+      "exchangeRate": 1000000000000000000,
+      "utilization": 0.05,
+      "borrowRatePerYear": 24999999981264000,
+      "supplyRatePerYear": 1125000000576000,
+      "price": 100000000,
+      "collateralFactor": 750000000000000000,
+      "isListed": true
+    }
+  ]
+}
+```
+
+**/markets/summary**
+```json
+{
+  "totalSupplyUsd": "5000.000000",
+  "totalEarningUsd": "2.250000",
+  "totalBorrowUsd": "100.000000",
+  "totalCollateralUsd": "3900.000000",
+  "asOf": 1770464426
+}
+```
+
+**/liquidity-mining**
+```json
+{
+  "items": [
+    {
+      "mining": "0x...",
+      "stakingToken": "0x...",
+      "stakingSymbol": "dUSDC",
+      "stakingDecimals": 18,
+      "rewardsToken": "0x...",
+      "rewardsSymbol": "GOV",
+      "rewardsDecimals": 18,
+      "rewardRate": 11574074074074074,
+      "totalStaked": 500000000000000000000,
+      "rewardPerToken": 2824074074074074,
+      "rewardsDuration": 2592000,
+      "periodFinish": 1773056299,
+      "lastTimeRewardApplicable": 1770464421
+    }
+  ]
+}
+```
+
 ## API
 - `GET /health`
 - `GET /events?contract=&event=&fromBlock=&toBlock=&limit=`
