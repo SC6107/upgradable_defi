@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -148,38 +148,6 @@ def get_markets_summary():
     summary["asOf"] = int(datetime.now(tz=timezone.utc).timestamp())
     return summary
 
-
-@app.get("/markets/timeseries", tags=["Markets"], summary="Get market time series")
-def get_markets_timeseries(
-    from_ts: Optional[int] = Query(None, alias="from", description="Start timestamp (defaults to 30 days ago)"),
-    to_ts: Optional[int] = Query(None, alias="to", description="End timestamp (defaults to now)"),
-    interval: str = Query("1d", description="Aggregation interval: '1d' (daily) or '1h' (hourly)"),
-):
-    """Return historical market data points aggregated by day or hour."""
-    chain = getattr(app.state, "chain", None)
-    if not chain:
-        raise HTTPException(status_code=500, detail="Chain reader not initialized")
-    summary = chain.get_markets_summary()
-
-    if to_ts is None:
-        to_ts = int(datetime.now(tz=timezone.utc).timestamp())
-    if from_ts is None:
-        from_ts = int((datetime.now(tz=timezone.utc) - timedelta(days=30)).timestamp())
-
-    step = 86_400 if interval == "1d" else 3_600
-    points = []
-    for ts in range(from_ts, to_ts + 1, step):
-        points.append(
-            {
-                "ts": ts,
-                "totalSupplyUsd": summary["totalSupplyUsd"],
-                "totalEarningUsd": summary["totalEarningUsd"],
-                "totalBorrowUsd": summary["totalBorrowUsd"],
-                "totalCollateralUsd": summary["totalCollateralUsd"],
-            }
-        )
-
-    return {"interval": interval, "points": points}
 
 
 @app.get("/stats", tags=["Events"], summary="Get event statistics")
