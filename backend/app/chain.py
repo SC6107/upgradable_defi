@@ -590,4 +590,25 @@ class ChainReader:
                 }
             )
 
-        return {"account": checksum, "positions": results}
+        gov_balance = None
+        gov_symbol = None
+        gov_decimals = None
+        gov_token = None
+        if results:
+            gov_token = results[0].get("rewardsToken")
+            gov_symbol = results[0].get("rewardsSymbol")
+            gov_decimals = results[0].get("rewardsDecimals")
+        if gov_token:
+            gov_erc20 = self._get_erc20(gov_token)
+            raw_balance = self._call_fn(gov_erc20, "balanceOf", checksum) if gov_erc20 else None
+            if raw_balance is not None and gov_decimals is not None:
+                gov_balance = float(Decimal(raw_balance) / Decimal(10**gov_decimals))
+
+        return {
+            "account": checksum,
+            "govToken": gov_token,
+            "govSymbol": gov_symbol,
+            "govDecimals": gov_decimals,
+            "govBalance": gov_balance,
+            "positions": results,
+        }
