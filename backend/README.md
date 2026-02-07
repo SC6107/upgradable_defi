@@ -12,6 +12,7 @@ cd /Users/liuruyan/Desktop/course/6107/upgradable_defi/backend
 python3.9 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+export ABI_ROOT=/Users/liuruyan/Desktop/course/6107/upgradable_defi/contracts/out
 uvicorn app.main:app --reload
 ```
 
@@ -27,6 +28,90 @@ uvicorn app.main:app --reload
 ```
 
 ABI 自动从 `../contracts/out/` 查找并读取（`abi` 字段）。
+
+## 测试与验证
+运行 API 测试脚本（默认使用 anvil 账号 0 地址）：
+```bash
+python test_api.py
+```
+
+看到如下结果说明合约数据已读到：
+- `/markets` 中包含 `symbol`、`price` 等字段且非空
+- `/markets/summary` 返回 4 个 USD 聚合字段
+- `/liquidity-mining` 返回两条挖矿池记录
+
+运行链上动作测试（会执行 supply/borrow/stake）：
+```bash
+# 需要提前设置治理代币地址
+export GOV_TOKEN=0x...
+python test_actions.py
+```
+
+预期输出：
+```
+On-chain actions completed.
+```
+
+再运行 `python test_api.py`，你会看到类似格式的数据：
+
+**/markets**
+```json
+{
+  "items": [
+    {
+      "market": "0x...",
+      "underlying": "0x...",
+      "symbol": "USDC",
+      "decimals": 18,
+      "totalSupply": 2000000000000000000000,
+      "totalBorrows": 100000000000000000000,
+      "totalReserves": 0,
+      "cash": 1900000000000000000000,
+      "exchangeRate": 1000000000000000000,
+      "utilization": 0.05,
+      "borrowRatePerYear": 24999999981264000,
+      "supplyRatePerYear": 1125000000576000,
+      "price": 100000000,
+      "collateralFactor": 750000000000000000,
+      "isListed": true
+    }
+  ]
+}
+```
+
+**/markets/summary**
+```json
+{
+  "totalSupplyUsd": "5000.000000",
+  "totalEarningUsd": "2.250000",
+  "totalBorrowUsd": "100.000000",
+  "totalCollateralUsd": "3900.000000",
+  "asOf": 1770464426
+}
+```
+
+**/liquidity-mining**
+```json
+{
+  "items": [
+    {
+      "mining": "0x...",
+      "stakingToken": "0x...",
+      "stakingSymbol": "dUSDC",
+      "stakingDecimals": 18,
+      "rewardsToken": "0x...",
+      "rewardsSymbol": "GOV",
+      "rewardsDecimals": 18,
+      "rewardRate": 11574074074074074,
+      "totalStaked": 500000000000000000000,
+      "rewardPerToken": 2824074074074074,
+      "rewardsDuration": 2592000,
+      "periodFinish": 1773056299,
+      "lastTimeRewardApplicable": 1770464421
+    }
+  ]
+}
+```
 
 ## API
 - `GET /health`
@@ -57,6 +142,12 @@ ABI 自动从 `../contracts/out/` 查找并读取（`abi` 字段）。
 - `GET /liquidity-mining/{address}`：用户在各挖矿池的质押与收益。
 
 ## 备注
+- 运行流程（联调时链要保持开启）：
+  1. 启动本地链：`anvil`
+  2. 部署合约：`upgradable_defi/contracts/script/deploy_local.sh`
+  3. 写入地址配置：运行 `quick_extract_local.sh` 并写入 `backend/config/addresses.local.json`
+  4. 启动后端：`uvicorn app.main:app --reload`
+- 如果关闭 anvil，链上读数会失败或变为 `null/0`。
 - 默认从 `latest-2000` 开始索引（如无 `state.lastProcessedBlock`）。
 - 可通过环境变量修改：
   - `RPC_URL`（默认 `http://127.0.0.1:8545`）
