@@ -30,6 +30,13 @@ uvicorn app.main:app --reload
 ABI 自动从 `../contracts/out/` 查找并读取（`abi` 字段）。
 
 ## 测试与验证
+### 运行顺序（必须按这个顺序）
+1. 启动本地链：`anvil`
+2. 部署合约：`upgradable_defi/contracts/script/deploy_local.sh`
+3. 写入地址配置：运行 `quick_extract_local.sh` 并写入 `backend/config/addresses.local.json`
+4. 启动后端：`uvicorn app.main:app --reload`
+5. 运行测试脚本：`python test_api.py` 或 `python test_actions.py`
+
 运行 API 测试脚本（默认使用 anvil 账号 0 地址）：
 ```bash
 python test_api.py
