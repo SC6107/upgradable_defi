@@ -601,6 +601,62 @@ class ChainReader:
 
         return {"account": checksum, "balances": balances}
 
+    def get_contract_addresses(self) -> Dict[str, Any]:
+        markets: List[Dict[str, Any]] = []
+        for market in self.markets:
+            underlying = self._call_fn(market, "underlying")
+            underlying_checksum = self._checksum(underlying) or underlying
+            underlying_erc20 = self._get_erc20(underlying_checksum)
+            markets.append(
+                {
+                    "market": market.address,
+                    "underlying": underlying_checksum,
+                    "symbol": self._call_fn(underlying_erc20, "symbol") if underlying_erc20 else None,
+                    "decimals": self._call_fn(underlying_erc20, "decimals") if underlying_erc20 else None,
+                }
+            )
+
+        liquidity_mining: List[Dict[str, Any]] = []
+        reward_tokens: Dict[str, Dict[str, Any]] = {}
+        for mining in self.liquidity_mining:
+            staking_token = self._call_fn(mining, "stakingToken")
+            rewards_token = self._call_fn(mining, "rewardsToken")
+            staking_checksum = self._checksum(staking_token) or staking_token
+            rewards_checksum = self._checksum(rewards_token) or rewards_token
+
+            staking_erc20 = self._get_erc20(staking_checksum)
+            rewards_erc20 = self._get_erc20(rewards_checksum)
+
+            liquidity_mining.append(
+                {
+                    "mining": mining.address,
+                    "stakingToken": staking_checksum,
+                    "stakingSymbol": self._call_fn(staking_erc20, "symbol") if staking_erc20 else None,
+                    "rewardsToken": rewards_checksum,
+                    "rewardsSymbol": self._call_fn(rewards_erc20, "symbol") if rewards_erc20 else None,
+                }
+            )
+
+            if rewards_checksum:
+                key = rewards_checksum.lower()
+                if key not in reward_tokens:
+                    reward_tokens[key] = {
+                        "token": rewards_checksum,
+                        "symbol": self._call_fn(rewards_erc20, "symbol") if rewards_erc20 else None,
+                        "decimals": self._call_fn(rewards_erc20, "decimals") if rewards_erc20 else None,
+                    }
+
+        return {
+            "chainId": self.w3.eth.chain_id,
+            "comptroller": self.comptroller.address if self.comptroller else None,
+            "priceOracle": self.price_oracle.address if self.price_oracle else None,
+            "markets": [item["market"] for item in markets],
+            "liquidityMining": [item["mining"] for item in liquidity_mining],
+            "marketDetails": markets,
+            "liquidityMiningDetails": liquidity_mining,
+            "rewardTokens": list(reward_tokens.values()),
+        }
+
     def get_liquidity_mining(self) -> List[Dict[str, Any]]:
         results = []
         for mining in self.liquidity_mining:

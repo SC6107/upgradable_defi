@@ -9,12 +9,13 @@ from web3 import Web3
 logger = logging.getLogger("uvicorn.error")
 
 from .chain import ChainReader
-from .config import DB_PATH, RPC_URL
+from .config import DB_PATH, RPC_URL, load_addresses
 from .db import Database
 from .indexer import Indexer
 
 tags_metadata = [
     {"name": "Health", "description": "Service health and chain status"},
+    {"name": "Contracts", "description": "Live deployed contract addresses for frontend runtime config"},
     {"name": "Markets", "description": "Lending market data, summaries, and time series"},
     {"name": "Accounts", "description": "User account positions, overviews, and wallet balances"},
     {"name": "Liquidity Mining", "description": "Liquidity mining pools and user positions"},
@@ -63,6 +64,21 @@ def health():
         "latestBlock": latest_block,
         "indexedToBlock": int(indexed_to) if indexed_to is not None else None,
     }
+
+
+@app.get("/contracts/addresses", tags=["Contracts"], summary="Get live deployed protocol addresses")
+def get_contract_addresses(
+    refresh: bool = Query(False, description="Reload addresses from latest deployment artifacts before returning"),
+):
+    """Return frontend-ready contract addresses currently used by the backend, including market and mining mappings."""
+    chain = getattr(app.state, "chain", None)
+    if refresh:
+        load_addresses.cache_clear()
+        app.state.chain = ChainReader()
+        chain = app.state.chain
+    if not chain:
+        raise HTTPException(status_code=500, detail="Chain reader not initialized")
+    return chain.get_contract_addresses()
 
 
 @app.get("/markets", tags=["Markets"], summary="List all markets")
@@ -126,6 +142,8 @@ def get_markets_summary():
     summary = chain.get_markets_summary()
     summary["asOf"] = int(datetime.now(tz=timezone.utc).timestamp())
     return summary
+
+
 @app.get("/liquidity-mining", tags=["Liquidity Mining"], summary="List liquidity mining pools")
 def get_liquidity_mining():
     """Return information for all liquidity mining pools including reward rates and staked totals."""

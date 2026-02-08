@@ -23,6 +23,9 @@ def main():
     print("GET /health")
     print(json.dumps(get("/health"), indent=2))
 
+    print("\nGET /contracts/addresses?refresh=true")
+    print(json.dumps(get("/contracts/addresses", {"refresh": "true"}), indent=2))
+
     print("\nGET /markets")
     markets = get("/markets")
     print(json.dumps(markets, indent=2))

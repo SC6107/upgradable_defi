@@ -115,6 +115,7 @@ On-chain actions completed.
 
 ## API
 - `GET /health`
+- `GET /contracts/addresses`
 - `GET /markets`
 - `GET /markets/summary`
 - `GET /markets/timeseries?from=&to=&interval=`
@@ -126,6 +127,7 @@ On-chain actions completed.
 
 ### API 说明
 - `GET /health`：链与索引状态（chainId、latestBlock、indexedToBlock）。
+- `GET /contracts/addresses`：返回后端当前使用的实时部署地址（`comptroller`、`priceOracle`、`markets`、`liquidityMining`）以及 `marketDetails`/`liquidityMiningDetails` 映射，供前端运行时动态读取。支持 `refresh=true` 触发重新扫描部署地址并即时刷新。
 - `GET /markets`：市场汇总（供给/借款/利率/利用率/价格/抵押系数）。
 - `GET /markets/summary`：市场顶部聚合指标（总供给/赚取/借款/抵押，USD）。
 - `GET /markets/timeseries`：按天/小时聚合（默认最近 30 天，当前为静态快照）。
