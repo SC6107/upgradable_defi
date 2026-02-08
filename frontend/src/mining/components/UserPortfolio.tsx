@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Account } from '@/services/api';
+import type { Account } from '@/mining/services/api';
 
 interface UserPortfolioProps {
   account: Account | null;

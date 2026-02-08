@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import API from '@/services/api';
+import API from '@/mining/services/api';
 
 interface TransactionsProps {
   selectedMarket?: string;
