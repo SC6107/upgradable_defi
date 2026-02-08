@@ -140,6 +140,8 @@ On-chain actions completed.
 - `GET /stats`：事件统计（按合约+事件分组计数）。
 - `GET /liquidity-mining`：挖矿池汇总（质押/奖励 token、总质押、奖励速率）。
 - `GET /liquidity-mining/{address}`：用户在各挖矿池的质押与收益。
+- 代币数量字段（如 `balance`、`supplyUnderlying`、`borrowBalance`、`totalStaked`、`stakedBalance`、`earned`、`govBalance`）均已按 `decimals` 转成可读数量（非原始链上整数）。
+- 比例/系数字段（如 `exchangeRate`、`collateralFactor`、`rewardPerToken`）已按 `1e18`（WAD）转成可读小数。
 
 ## 备注
 - 运行流程（联调时链要保持开启）：

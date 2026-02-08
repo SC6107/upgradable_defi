@@ -149,6 +149,23 @@ class ChainReader:
             value = value.quantize(Decimal(quantize))
         return float(value)
 
+    def _amount_to_token(self, amount: Optional[int], decimals: Optional[int]) -> Optional[float]:
+        if amount is None or decimals is None:
+            return None
+        return self._to_float(Decimal(amount) / (Decimal(10) ** decimals))
+
+    def _wad_to_float(self, value: Optional[int], quantize: Optional[str] = None) -> Optional[float]:
+        if value is None:
+            return None
+        return self._to_float(Decimal(value) / WAD, quantize)
+
+    def _token_to_usd_from_price_usd(
+        self, amount: Optional[float], price_usd: Optional[float]
+    ) -> Optional[Decimal]:
+        if amount is None or price_usd is None:
+            return None
+        return Decimal(str(amount)) * Decimal(str(price_usd))
+
     def get_markets(self) -> List[Dict[str, Any]]:
         results = []
         for market in self.markets:
@@ -242,6 +259,7 @@ class ChainReader:
 
             supply_rate_dec = self._rate_to_decimal(supply_rate_year)
             borrow_rate_dec = self._rate_to_decimal(borrow_rate_year)
+            collateral_factor_dec = self._wad_to_float(collateral_factor, "0.0000000000000001")
 
             results.append(
                 {
@@ -249,15 +267,15 @@ class ChainReader:
                     "underlying": underlying,
                     "symbol": symbol,
                     "decimals": decimals,
-                    "totalSupply": self._to_float(supply_usd, "0.000001"),
+                    "totalSupply": supply_underlying,
                     "totalSupplyUnderlying": supply_underlying,
                     "totalSupplyUsd": self._to_float(supply_usd, "0.000001"),
-                    "totalBorrows": self._to_float(borrow_usd, "0.000001"),
+                    "totalBorrows": borrow_underlying,
                     "totalBorrowsUnderlying": borrow_underlying,
                     "totalBorrowsUsd": self._to_float(borrow_usd, "0.000001"),
-                    "totalReserves": total_reserves,
-                    "cash": cash,
-                    "exchangeRate": exchange_rate,
+                    "totalReserves": self._amount_to_token(total_reserves, decimals),
+                    "cash": self._amount_to_token(cash, decimals),
+                    "exchangeRate": self._wad_to_float(exchange_rate, "0.000000000000000001"),
                     "utilization": utilization,
                     "borrowRatePerYear": self._to_float(borrow_rate_dec, "0.0000000000000001"),
                     "borrowAprPct": self._to_float(self._decimal_to_pct(borrow_rate_dec), "0.0001"),
@@ -265,7 +283,7 @@ class ChainReader:
                     "supplyAprPct": self._to_float(self._decimal_to_pct(supply_rate_dec), "0.0001"),
                     "price": self._to_float(price_usd, "0.000001"),
                     "priceUsd": self._to_float(price_usd, "0.000001"),
-                    "collateralFactor": collateral_factor,
+                    "collateralFactor": collateral_factor_dec,
                     "isListed": is_listed,
                 }
             )
@@ -291,7 +309,7 @@ class ChainReader:
 
             if supply_usd is not None:
                 total_supply += supply_usd
-                total_collateral += supply_usd * Decimal(collateral_factor) / Decimal(10**18)
+                total_collateral += supply_usd * Decimal(str(collateral_factor))
                 total_earning += supply_usd * Decimal(str(supply_rate))
             if borrow_usd is not None:
                 total_borrow += borrow_usd
@@ -314,7 +332,6 @@ class ChainReader:
         weighted_borrow_rate = Decimal(0)
 
         for pos in positions:
-            decimals = pos.get("decimals")
             price_usd = pos.get("priceUsd", pos.get("price"))
             supply_underlying = pos.get("supplyUnderlying")
             borrow_balance = pos.get("borrowBalance")
@@ -322,12 +339,12 @@ class ChainReader:
             borrow_rate = pos.get("borrowRatePerYear") or 0
             cf = pos.get("collateralFactor") or 0
 
-            supply_usd = self._amount_to_usd_from_price_usd(supply_underlying, decimals, price_usd)
-            borrow_usd = self._amount_to_usd_from_price_usd(borrow_balance, decimals, price_usd)
+            supply_usd = self._token_to_usd_from_price_usd(supply_underlying, price_usd)
+            borrow_usd = self._token_to_usd_from_price_usd(borrow_balance, price_usd)
 
             if supply_usd is not None:
                 supply_total += supply_usd
-                collateral_total += supply_usd * Decimal(cf) / Decimal(10**18)
+                collateral_total += supply_usd * Decimal(str(cf))
                 weighted_supply_rate += supply_usd * Decimal(str(supply_rate))
             if borrow_usd is not None:
                 borrow_total += borrow_usd
@@ -385,13 +402,18 @@ class ChainReader:
             erc20 = self._get_erc20(underlying)
             symbol = self._call_fn(erc20, "symbol") if erc20 else None
             decimals = self._call_fn(erc20, "decimals") if erc20 else None
+            dtoken_decimals = self._call_fn(market, "decimals")
 
-            supply_dtoken = self._call_fn(market, "balanceOf", checksum)
-            borrow_balance = self._call_fn(market, "borrowBalanceStored", checksum)
+            supply_dtoken_raw = self._call_fn(market, "balanceOf", checksum)
+            borrow_balance_raw = self._call_fn(market, "borrowBalanceStored", checksum)
             exchange_rate = self._call_fn(market, "exchangeRateStored")
-            underlying_supply = None
-            if supply_dtoken is not None and exchange_rate is not None:
-                underlying_supply = (supply_dtoken * exchange_rate) // 10**18
+            underlying_supply_raw = None
+            if supply_dtoken_raw is not None and exchange_rate is not None:
+                underlying_supply_raw = (supply_dtoken_raw * exchange_rate) // 10**18
+
+            supply_dtoken = self._amount_to_token(supply_dtoken_raw, dtoken_decimals)
+            underlying_supply = self._amount_to_token(underlying_supply_raw, decimals)
+            borrow_balance = self._amount_to_token(borrow_balance_raw, decimals)
 
             collateral_factor = None
             is_listed = None
@@ -423,10 +445,11 @@ class ChainReader:
                     "underlying": underlying,
                     "symbol": symbol,
                     "decimals": decimals,
+                    "dTokenDecimals": dtoken_decimals,
                     "supplyDToken": supply_dtoken,
                     "supplyUnderlying": underlying_supply,
                     "borrowBalance": borrow_balance,
-                    "exchangeRate": exchange_rate,
+                    "exchangeRate": self._wad_to_float(exchange_rate, "0.000000000000000001"),
                     "price": self._to_float(price_usd, "0.000001"),
                     "priceUsd": self._to_float(price_usd, "0.000001"),
                     "supplyRatePerYear": self._to_float(
@@ -435,7 +458,7 @@ class ChainReader:
                     "borrowRatePerYear": self._to_float(
                         self._rate_to_decimal(borrow_rate_raw), "0.0000000000000001"
                     ),
-                    "collateralFactor": collateral_factor,
+                    "collateralFactor": self._wad_to_float(collateral_factor, "0.0000000000000001"),
                     "isListed": is_listed,
                 }
             )
@@ -443,17 +466,12 @@ class ChainReader:
         total_collateral_usd = Decimal(0)
         total_borrow_usd = Decimal(0)
         for pos in positions:
-            decimals = pos.get("decimals")
             price_usd = pos.get("priceUsd", pos.get("price"))
             cf = pos.get("collateralFactor") or 0
-            supply_usd = self._amount_to_usd_from_price_usd(
-                pos.get("supplyUnderlying"), decimals, price_usd
-            )
-            borrow_usd = self._amount_to_usd_from_price_usd(
-                pos.get("borrowBalance"), decimals, price_usd
-            )
+            supply_usd = self._token_to_usd_from_price_usd(pos.get("supplyUnderlying"), price_usd)
+            borrow_usd = self._token_to_usd_from_price_usd(pos.get("borrowBalance"), price_usd)
             if supply_usd is not None:
-                total_collateral_usd += supply_usd * Decimal(cf) / Decimal(10**18)
+                total_collateral_usd += supply_usd * Decimal(str(cf))
             if borrow_usd is not None:
                 total_borrow_usd += borrow_usd
 
@@ -502,13 +520,14 @@ class ChainReader:
         erc20 = self._get_erc20(underlying)
         symbol = self._call_fn(erc20, "symbol") if erc20 else None
         decimals = self._call_fn(erc20, "decimals") if erc20 else None
+        dtoken_decimals = self._call_fn(market, "decimals")
 
-        supply_dtoken = self._call_fn(market, "balanceOf", checksum)
-        borrow_balance = self._call_fn(market, "borrowBalanceStored", checksum)
+        supply_dtoken_raw = self._call_fn(market, "balanceOf", checksum)
+        borrow_balance_raw = self._call_fn(market, "borrowBalanceStored", checksum)
         exchange_rate = self._call_fn(market, "exchangeRateStored")
-        underlying_supply = None
-        if supply_dtoken is not None and exchange_rate is not None:
-            underlying_supply = (supply_dtoken * exchange_rate) // 10**18
+        underlying_supply_raw = None
+        if supply_dtoken_raw is not None and exchange_rate is not None:
+            underlying_supply_raw = (supply_dtoken_raw * exchange_rate) // 10**18
 
         collateral_factor = None
         is_listed = None
@@ -526,13 +545,14 @@ class ChainReader:
             "underlying": underlying,
             "symbol": symbol,
             "decimals": decimals,
-            "supplyDToken": supply_dtoken,
-            "supplyUnderlying": underlying_supply,
-            "borrowBalance": borrow_balance,
-            "exchangeRate": exchange_rate,
+            "dTokenDecimals": dtoken_decimals,
+            "supplyDToken": self._amount_to_token(supply_dtoken_raw, dtoken_decimals),
+            "supplyUnderlying": self._amount_to_token(underlying_supply_raw, decimals),
+            "borrowBalance": self._amount_to_token(borrow_balance_raw, decimals),
+            "exchangeRate": self._wad_to_float(exchange_rate, "0.000000000000000001"),
             "price": self._to_float(price_usd, "0.000001"),
             "priceUsd": self._to_float(price_usd, "0.000001"),
-            "collateralFactor": collateral_factor,
+            "collateralFactor": self._wad_to_float(collateral_factor, "0.0000000000000001"),
             "isListed": is_listed,
         }
 
@@ -566,14 +586,14 @@ class ChainReader:
             erc20 = self._get_erc20(addr)
             symbol = self._call_fn(erc20, "symbol") if erc20 else sym
             decimals = self._call_fn(erc20, "decimals") if erc20 else None
-            balance = self._call_fn(erc20, "balanceOf", checksum) if erc20 else None
+            balance_raw = self._call_fn(erc20, "balanceOf", checksum) if erc20 else None
             price_raw = self._get_price(addr)
             balances.append(
                 {
                     "symbol": symbol,
                     "underlying": addr,
                     "decimals": decimals,
-                    "balance": balance,
+                    "balance": self._amount_to_token(balance_raw, decimals),
                     "price": self._to_float(self._price_to_usd(price_raw), "0.000001"),
                     "priceUsd": self._to_float(self._price_to_usd(price_raw), "0.000001"),
                 }
@@ -617,9 +637,11 @@ class ChainReader:
                     "rewardsToken": rewards_token,
                     "rewardsSymbol": self._call_fn(rewards_erc20, "symbol") if rewards_erc20 else None,
                     "rewardsDecimals": rewards_decimals,
-                    "rewardRate": reward_rate,
-                    "totalStaked": total_staked,
-                    "rewardPerToken": self._call_fn(mining, "rewardPerToken"),
+                    "rewardRate": self._amount_to_token(reward_rate, rewards_decimals),
+                    "totalStaked": self._amount_to_token(total_staked, staking_decimals),
+                    "rewardPerToken": self._wad_to_float(
+                        self._call_fn(mining, "rewardPerToken"), "0.000000000000000001"
+                    ),
                     "rewardsDuration": self._call_fn(mining, "rewardsDuration"),
                     "periodFinish": self._call_fn(mining, "periodFinish"),
                     "lastTimeRewardApplicable": self._call_fn(mining, "lastTimeRewardApplicable"),
@@ -671,8 +693,14 @@ class ChainReader:
                     "rewardsToken": rewards_token,
                     "rewardsSymbol": self._call_fn(rewards_erc20, "symbol") if rewards_erc20 else None,
                     "rewardsDecimals": rewards_decimals,
-                    "stakedBalance": self._call_fn(mining, "balanceOf", checksum),
-                    "earned": self._call_fn(mining, "earned", checksum),
+                    "stakedBalance": self._amount_to_token(
+                        self._call_fn(mining, "balanceOf", checksum),
+                        staking_decimals,
+                    ),
+                    "earned": self._amount_to_token(
+                        self._call_fn(mining, "earned", checksum),
+                        rewards_decimals,
+                    ),
                     "stakingTokenPrice": 1.0,
                     "rewardsTokenPrice": 1.0,
                     "apr": apr,
@@ -691,8 +719,7 @@ class ChainReader:
         if gov_token:
             gov_erc20 = self._get_erc20(gov_token)
             raw_balance = self._call_fn(gov_erc20, "balanceOf", checksum) if gov_erc20 else None
-            if raw_balance is not None and gov_decimals is not None:
-                gov_balance = float(Decimal(raw_balance) / Decimal(10**gov_decimals))
+            gov_balance = self._amount_to_token(raw_balance, gov_decimals)
 
         return {
             "account": checksum,
