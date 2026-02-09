@@ -97,9 +97,19 @@ class Web3Service {
       throw new Error('Wallet not connected');
     }
 
-    const amountBN = ethers.parseUnits(amount, 18); // Assuming 18 decimals
+    // Get token decimals
+    const underlyingContractProvider = new ethers.Contract(underlyingAddress, ERC20_ABI, this.provider);
+    const decimals = await underlyingContractProvider.decimals();
+
+    const amountBN = ethers.parseUnits(amount, decimals);
     const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
     const marketContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
+
+    // Check balance
+    const balance = await underlyingContract.balanceOf(this.account);
+    if (balance < amountBN) {
+      throw new Error(`Insufficient balance. You have ${ethers.formatUnits(balance, decimals)} tokens`);
+    }
 
     // Approve the market to spend tokens
     const allowance = await underlyingContract.allowance(this.account, marketAddress);
