@@ -1,5 +1,6 @@
 from decimal import Decimal, getcontext
 from typing import Any, Dict, List, Optional
+import os
 
 from web3 import Web3
 
@@ -18,12 +19,17 @@ class ChainReader:
         self.price_oracle_address = addresses.get("priceOracle")
         self.liquidity_mining_addresses = addresses.get("liquidityMining", [])
 
+        # Governance token (optional). Prefer config, fall back to env GOV_TOKEN.
+        self.gov_token_address = addresses.get("governanceToken") or os.getenv("GOV_TOKEN")
+
         self.comptroller_abi = load_abi("Comptroller")
         self.market_abi = load_abi("LendingToken")
         self.erc20_abi = load_abi("ERC20")
         self.price_oracle_abi = load_abi("PriceOracle")
         self.rate_model_abi = load_abi("JumpRateModel")
         self.liquidity_mining_abi = load_abi("LiquidityMining")
+        # Governance token ABI (may not be used if address missing)
+        self.gov_token_abi = load_abi("GovernanceToken")
 
         self.comptroller = self._build_contract(self.comptroller_address, self.comptroller_abi)
         self.price_oracle = self._build_contract(self.price_oracle_address, self.price_oracle_abi)
@@ -31,6 +37,7 @@ class ChainReader:
         self.liquidity_mining = self._build_liquidity_mining_contracts(
             self.liquidity_mining_addresses
         )
+        self.gov_token = self._build_contract(self.gov_token_address, self.gov_token_abi)
 
     def _checksum(self, address: Optional[str]) -> Optional[str]:
         if not address:
@@ -523,3 +530,37 @@ class ChainReader:
             )
 
         return {"account": checksum, "positions": results}
+
+    def get_governance_summary(self, account: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Return governance token level info, and optionally account-level voting info.
+        """
+        if not self.gov_token:
+            # Governance token not configured; return empty result to avoid 500.
+            return {}
+
+        token_info: Dict[str, Any] = {
+            "token": self.gov_token_address,
+            "symbol": self._call_fn(self.gov_token, "symbol"),
+            "decimals": self._call_fn(self.gov_token, "decimals"),
+            "totalSupply": self._call_fn(self.gov_token, "totalSupply"),
+            "maxSupply": self._call_fn(self.gov_token, "maxSupply"),
+            "minter": self._call_fn(self.gov_token, "minter"),
+        }
+
+        if account is None:
+            return token_info
+
+        checksum = self._checksum(account)
+        if not checksum:
+            raise ValueError("Invalid address")
+
+        account_info: Dict[str, Any] = {
+            "account": checksum,
+            "balance": self._call_fn(self.gov_token, "balanceOf", checksum),
+            "votes": self._call_fn(self.gov_token, "getVotes", checksum),
+            "delegate": self._call_fn(self.gov_token, "delegates", checksum),
+        }
+
+        token_info["account"] = account_info
+        return token_info

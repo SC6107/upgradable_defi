@@ -187,6 +187,23 @@ def get_liquidity_mining_account(address: str):
     return result
 
 
+@app.get("/governance")
+def get_governance(account: Optional[str] = Query(None)):
+    """
+    Governance token overview and optional account voting info.
+    - Without account: returns token-level info (supply, minter, etc.).
+    - With account: adds balance, votes, delegate for the given address.
+    """
+    chain = getattr(app.state, "chain", None)
+    if not chain:
+        raise HTTPException(status_code=500, detail="Chain reader not initialized")
+    try:
+        result = chain.get_governance_summary(account)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid address")
+    return result
+
+
 @app.get("/events/amounts")
 def get_event_amounts(
     contract: Optional[str] = Query(None),
