@@ -1,23 +1,26 @@
-/**
- * Action Modal Component
- * Generic modal for lending actions (supply, withdraw, borrow, repay)
- */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import type { LendingMarket, LendingAction } from '../types';
 import Web3Service from '../services/web3';
+import { formatPct } from '../utils';
 
-interface ActionModalProps {
+type Props = {
   isOpen: boolean;
   onClose: () => void;
   action: LendingAction;
   market: LendingMarket | null;
   onSuccess: () => void | Promise<void>;
   maxAmount?: string;
-  /** Comptroller address; when set, supply will call enterMarkets so position counts as collateral */
   comptrollerAddress?: string | null;
-}
+};
 
-export const ActionModal: React.FC<ActionModalProps> = ({
+const LABELS: Record<LendingAction, string> = {
+  supply: '供应',
+  withdraw: '提取',
+  borrow: '借款',
+  repay: '还款',
+};
+
+export function ActionModal({
   isOpen,
   onClose,
   action,
@@ -25,7 +28,7 @@ export const ActionModal: React.FC<ActionModalProps> = ({
   onSuccess,
   maxAmount = '0',
   comptrollerAddress,
-}) => {
+}: Props) {
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,16 +48,14 @@ export const ActionModal: React.FC<ActionModalProps> = ({
     e.preventDefault();
     setError(null);
     setTxHash(null);
-
-    if (!amount || parseFloat(amount) <= 0) {
-      setError('Please enter a valid amount');
+    const num = parseFloat(amount);
+    if (!amount || num <= 0) {
+      setError('请输入有效金额');
       return;
     }
-
     setLoading(true);
     try {
       let hash: string;
-      
       switch (action) {
         case 'supply':
           hash = await Web3Service.supply(market.market, amount, market.underlying ?? '', comptrollerAddress);
@@ -71,73 +72,63 @@ export const ActionModal: React.FC<ActionModalProps> = ({
         default:
           throw new Error('Unknown action');
       }
-
       setTxHash(hash);
       await Promise.resolve(onSuccess());
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 500));
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      setError(err instanceof Error ? err.message : '交易失败');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleMaxClick = () => {
-    setAmount(maxAmount);
-  };
+  const isSupplyOrWithdraw = action === 'supply' || action === 'withdraw';
+  const rate = isSupplyOrWithdraw ? market.supplyRatePerYear : market.borrowRatePerYear;
+  const ratePct = rate != null ? formatPct(rate) : '0.00';
+  const cfPct = (market.collateralFactor ?? 0) * 100;
+  const utilPct = ((market.utilization ?? 0) * 100).toFixed(2);
 
-  const actionText = {
-    supply: 'Supply',
-    withdraw: 'Withdraw',
-    borrow: 'Borrow',
-    repay: 'Repay',
-  };
-
-  const actionColor = {
-    supply: 'green',
-    withdraw: 'red',
-    borrow: 'blue',
-    repay: 'yellow',
-  };
-
-  const color = actionColor[action];
+  const submitBtnClass = {
+    supply: 'bg-teal-600 hover:bg-teal-500',
+    withdraw: 'bg-red-600 hover:bg-red-500',
+    borrow: 'bg-amber-600 hover:bg-amber-500',
+    repay: 'bg-teal-600 hover:bg-teal-500',
+  }[action];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 rounded-lg max-w-md w-full p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-white">
-            {actionText[action]} {market.symbol}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-xl border border-zinc-700/80 bg-zinc-900 p-6 shadow-xl">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-white">
+            {LABELS[action]} {market.symbol}
           </h2>
           <button
+            type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+            aria-label="关闭"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {txHash ? (
-          <div className="text-center py-8">
-            <div className="mb-4 text-green-400">
-              <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="py-6 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Transaction Successful!</h3>
-            <p className="text-gray-400 text-sm mb-4">
-              Tx Hash: {txHash.substring(0, 10)}...{txHash.substring(txHash.length - 8)}
-            </p>
+            <p className="font-medium text-white">交易成功</p>
+            <p className="mt-1 text-xs text-zinc-500 font-mono">{txHash.slice(0, 10)}...{txHash.slice(-8)}</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
-            <div className="mb-6">
-              <label className="block text-gray-300 text-sm font-medium mb-2">
-                Amount
-              </label>
+            <div className="mb-4">
+              <label className="mb-1.5 block text-sm font-medium text-zinc-400">金额</label>
               <div className="relative">
                 <input
                   type="number"
@@ -145,53 +136,46 @@ export const ActionModal: React.FC<ActionModalProps> = ({
                   min="0"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 pr-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="0.0"
+                  className="w-full rounded-lg border border-zinc-600 bg-zinc-800 py-3 pl-4 pr-24 text-white placeholder-zinc-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  placeholder="0"
                   disabled={loading}
                 />
-                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+                <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
                   <button
                     type="button"
-                    onClick={handleMaxClick}
-                    className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                    onClick={() => setAmount(maxAmount)}
+                    className="rounded bg-zinc-600 px-2 py-1 text-xs text-white hover:bg-zinc-500 disabled:opacity-50"
                     disabled={loading}
                   >
                     MAX
                   </button>
-                  <span className="text-gray-400 text-sm">{market.symbol}</span>
+                  <span className="text-sm text-zinc-500">{market.symbol}</span>
                 </div>
               </div>
               {maxAmount && parseFloat(maxAmount) > 0 && (
-                <p className="mt-1 text-xs text-gray-400">
-                  Available: {parseFloat(maxAmount).toFixed(4)} {market.symbol}
+                <p className="mt-1 text-xs text-zinc-500">
+                  可用: {parseFloat(maxAmount).toFixed(4)} {market.symbol}
                 </p>
               )}
             </div>
 
-            {/* Market Info */}
-            <div className="mb-6 bg-slate-700 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">
-                  {action === 'supply' || action === 'withdraw' ? 'Supply APY' : 'Borrow APY'}
-                </span>
-                <span className={`font-medium ${action === 'supply' || action === 'withdraw' ? 'text-green-400' : 'text-yellow-400'}`}>
-                  {action === 'supply' || action === 'withdraw'
-                    ? (market.supplyRatePerYear * 100).toFixed(2)
-                    : (market.borrowRatePerYear * 100).toFixed(2)}%
-                </span>
+            <div className="mb-4 rounded-lg border border-zinc-700/80 bg-zinc-800/60 p-3 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-zinc-500">{isSupplyOrWithdraw ? 'Supply APY' : 'Borrow APY'}</span>
+                <span className={isSupplyOrWithdraw ? 'text-emerald-400' : 'text-amber-400'}>{ratePct}%</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Collateral Factor</span>
-                <span className="text-white">{(market.collateralFactor * 100).toFixed(0)}%</span>
+              <div className="flex justify-between">
+                <span className="text-zinc-500">抵押因子</span>
+                <span className="text-zinc-300">{cfPct.toFixed(0)}%</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Utilization</span>
-                <span className="text-white">{(market.utilization * 100).toFixed(2)}%</span>
+              <div className="flex justify-between">
+                <span className="text-zinc-500">利用率</span>
+                <span className="text-zinc-300">{utilPct}%</span>
               </div>
             </div>
 
             {error && (
-              <div className="mb-4 bg-red-500 bg-opacity-10 border border-red-500 text-red-500 rounded-lg p-3 text-sm">
+              <div className="mb-4 rounded-lg border border-red-500/50 bg-red-950/30 px-3 py-2 text-sm text-red-300">
                 {error}
               </div>
             )}
@@ -200,23 +184,23 @@ export const ActionModal: React.FC<ActionModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                className="flex-1 rounded-lg border border-zinc-600 bg-zinc-800 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
                 disabled={loading}
               >
-                Cancel
+                取消
               </button>
               <button
                 type="submit"
-                className={`flex-1 px-4 py-3 bg-${color}-600 hover:bg-${color}-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={`flex-1 rounded-lg py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50 ${submitBtnClass}`}
                 disabled={loading}
               >
                 {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                    Processing...
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    处理中
                   </span>
                 ) : (
-                  actionText[action]
+                  LABELS[action]
                 )}
               </button>
             </div>
@@ -225,4 +209,4 @@ export const ActionModal: React.FC<ActionModalProps> = ({
       </div>
     </div>
   );
-};
+}

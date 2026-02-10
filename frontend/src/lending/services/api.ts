@@ -3,6 +3,7 @@
  * Handles all API calls for lending markets and user data
  */
 import axios from 'axios';
+import { getAddress } from 'ethers';
 import type { LendingMarket, AccountData, TransactionEvent, UserPosition } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -36,10 +37,12 @@ class LendingAPIService {
   }
 
   /**
-   * Get account data including positions and health
+   * Get account data including positions and health.
+   * Normalizes address to checksum so backend/contract see the same format as the wallet.
    */
   async getAccount(address: string): Promise<AccountData> {
-    const response = await apiClient.get(`/accounts/${address}`);
+    const checksummed = getAddress(address);
+    const response = await apiClient.get(`/accounts/${checksummed}`);
     const data = response.data;
     const positions = data.positions || [];
     // Backend sends price as USD float (e.g. 1.0) and supplyUnderlying/borrowBalance as token amounts (e.g. 300)

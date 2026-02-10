@@ -1,23 +1,108 @@
-/**
- * User Positions Component
- * Displays user's supply and borrow positions
- */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { AccountData, UserPosition } from '../types';
+import { formatPct, getPrice, formatUsd, shortAddress } from '../utils';
 import Web3Service from '../services/web3';
 
-interface UserPositionsProps {
+type Props = {
   account: AccountData | null;
   loading: boolean;
   connected: boolean;
-  onWithdraw: (position: UserPosition) => void;
-  onRepay: (position: UserPosition) => void;
-  /** When set, show "Enable as collateral" if liquidity is 0 but user has supply (enter markets once) */
+  onWithdraw: (p: UserPosition) => void;
+  onRepay: (p: UserPosition) => void;
   comptrollerAddress?: string | null;
   onRefetch?: () => void;
+};
+
+function useSummary(positions: UserPosition[], liquidityUsd: number | undefined) {
+  const totalSupplied = positions.reduce((s, p) => s + (p.supplyUnderlying ?? 0) * getPrice(p), 0);
+  const totalBorrowed = positions.reduce((s, p) => s + (p.borrowBalance ?? 0) * getPrice(p), 0);
+  const borrowLimitFromCf = positions.reduce(
+    (s, p) => s + (p.supplyUnderlying ?? 0) * getPrice(p) * (p.collateralFactor ?? 0),
+    0
+  );
+  const borrowLimit =
+    typeof liquidityUsd === 'number' && totalBorrowed >= 0
+      ? totalBorrowed + liquidityUsd
+      : borrowLimitFromCf;
+  return { totalSupplied, totalBorrowed, borrowLimit };
 }
 
-export const UserPositions: React.FC<UserPositionsProps> = ({
+function PositionTable({
+  title,
+  positions,
+  type,
+  onAction,
+  actionLabel,
+  actionClass,
+  valueKey,
+  apyKey,
+}: {
+  title: string;
+  positions: UserPosition[];
+  type: 'supply' | 'borrow';
+  onAction: (p: UserPosition) => void;
+  actionLabel: string;
+  actionClass: string;
+  valueKey: 'supplyUnderlying' | 'borrowBalance';
+  apyKey: 'supplyRatePerYear' | 'borrowRatePerYear';
+}) {
+  return (
+    <section>
+      <h3 className="text-lg font-semibold text-zinc-200 mb-3">{title}</h3>
+      <div className="rounded-xl border border-zinc-700/80 overflow-hidden bg-zinc-900/60">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-zinc-700/80 bg-zinc-800/80 text-zinc-400 text-left">
+              <th className="px-4 py-3 font-medium">Asset</th>
+              <th className="px-4 py-3 text-right font-medium">Balance</th>
+              <th className="px-4 py-3 text-right font-medium">Value</th>
+              <th className="px-4 py-3 text-right font-medium">APY</th>
+              {type === 'supply' && (
+                <th className="px-4 py-3 text-right font-medium">Collateral</th>
+              )}
+              <th className="px-4 py-3 text-right font-medium w-24">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-700/60">
+            {positions.map((p) => {
+              const price = getPrice(p);
+              const value = (p[valueKey] ?? 0) * price;
+              const apy = (p as Record<string, number>)[apyKey] ?? (p as Record<string, number>).supplyRatePerYear ?? (p as Record<string, number>).borrowRatePerYear;
+              return (
+                <tr key={p.market} className="hover:bg-zinc-800/50">
+                  <td className="px-4 py-3 font-medium text-white">{p.symbol}</td>
+                  <td className="px-4 py-3 text-right text-zinc-200">
+                    {(p[valueKey] ?? 0).toFixed(4)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-zinc-200">{formatUsd(value)}</td>
+                  <td className={`px-4 py-3 text-right ${type === 'supply' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {formatPct(apy)}%
+                  </td>
+                  {type === 'supply' && (
+                    <td className="px-4 py-3 text-right text-zinc-400">
+                      {((p.collateralFactor ?? 0) * 100).toFixed(0)}%
+                    </td>
+                  )}
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => onAction(p)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${actionClass}`}
+                    >
+                      {actionLabel}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export function UserPositions({
   account,
   loading,
   connected,
@@ -25,200 +110,129 @@ export const UserPositions: React.FC<UserPositionsProps> = ({
   onRepay,
   comptrollerAddress,
   onRefetch,
-}) => {
+}: Props) {
   const [entering, setEntering] = useState(false);
+
   const handleEnterMarkets = async () => {
     if (!comptrollerAddress || !account || !onRefetch) return;
-    const marketsWithSupply = account.positions.filter((p) => p.supplyUnderlying > 0).map((p) => p.market);
-    if (marketsWithSupply.length === 0) return;
+    const markets = account.positions.filter((p) => (p.supplyUnderlying ?? 0) > 0).map((p) => p.market);
+    if (markets.length === 0) return;
     setEntering(true);
     try {
-      await Web3Service.enterMarkets(comptrollerAddress, marketsWithSupply);
+      await Web3Service.enterMarkets(comptrollerAddress, markets);
       await onRefetch();
     } finally {
       setEntering(false);
     }
   };
+
   if (!connected) {
     return (
-      <div className="bg-slate-800 rounded-lg p-8 text-center">
-        <p className="text-gray-400">Please connect wallet first</p>
+      <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-12 text-center">
+        <p className="text-zinc-400">请先连接钱包</p>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="bg-slate-800 rounded-lg p-8 text-center">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-        <p className="mt-4 text-gray-400">Loading positions...</p>
+      <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-12 text-center">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
+        <p className="mt-3 text-zinc-400">加载头寸中...</p>
       </div>
     );
   }
 
-  if (!account || account.positions.length === 0) {
+  if (!account || !account.positions?.length) {
     return (
-      <div className="bg-slate-800 rounded-lg p-8 text-center">
-        <p className="text-gray-400">No positions found</p>
+      <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-12 text-center">
+        <p className="text-zinc-400">暂无头寸</p>
       </div>
     );
   }
 
-  const supplyPositions = account.positions.filter((p) => p.supplyUnderlying > 0);
-  const borrowPositions = account.positions.filter((p) => p.borrowBalance > 0);
+  const supplyPositions = account.positions.filter((p) => (p.supplyUnderlying ?? 0) > 0);
+  const borrowPositions = account.positions.filter((p) => (p.borrowBalance ?? 0) > 0);
+  const liquidityUsd = (account as { liquidityUsd?: number }).liquidityUsd ?? account.liquidity;
+  const summary = useSummary(account.positions, liquidityUsd);
+  const showEnterMarkets =
+    supplyPositions.length > 0 &&
+    comptrollerAddress &&
+    onRefetch &&
+    (liquidityUsd == null || liquidityUsd === 0);
 
   return (
     <div className="space-y-6">
-      {/* Account Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 border border-slate-700">
-          <div className="text-gray-400 text-sm mb-1">Total Supplied</div>
-          <div className="text-2xl font-bold text-white">
-            ${account.totalSupplied.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-          </div>
+      <p className="text-zinc-500 text-sm">
+        当前地址：<span className="font-mono text-zinc-300">{shortAddress(account.account)}</span>
+      </p>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
+          <div className="text-zinc-500 text-xs mb-0.5">总供应 (USD)</div>
+          <div className="text-xl font-semibold text-white">{formatUsd(summary.totalSupplied)}</div>
         </div>
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 border border-slate-700">
-          <div className="text-gray-400 text-sm mb-1">Total Borrowed</div>
-          <div className="text-2xl font-bold text-white">
-            ${account.totalBorrowed.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-          </div>
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
+          <div className="text-zinc-500 text-xs mb-0.5">总借款 (USD)</div>
+          <div className="text-xl font-semibold text-white">{formatUsd(summary.totalBorrowed)}</div>
         </div>
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 border border-slate-700">
-          <div className="text-gray-400 text-sm mb-1">Borrow Limit</div>
-          <div className="text-2xl font-bold text-white">
-            ${account.borrowLimit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-          </div>
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
+          <div className="text-zinc-500 text-xs mb-0.5">借款额度</div>
+          <div className="text-xl font-semibold text-white">{formatUsd(summary.borrowLimit)}</div>
         </div>
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 border border-slate-700">
-          <div className="text-gray-400 text-sm mb-1">Account Health</div>
-          <div className={`text-2xl font-bold ${account.isHealthy ? 'text-green-400' : 'text-red-400'}`}>
-            {account.isHealthy ? 'Healthy' : 'At Risk'}
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
+          <div className="text-zinc-500 text-xs mb-0.5">健康状态</div>
+          <div
+            className={`text-xl font-semibold ${account.isHealthy ? 'text-emerald-400' : 'text-red-400'}`}
+          >
+            {account.isHealthy ? '健康' : '风险'}
           </div>
         </div>
       </div>
 
-      {/* Hint: enter markets so supply counts as collateral (liquidity) */}
-      {supplyPositions.length > 0 && comptrollerAddress && onRefetch && (account.liquidity === 0 || (account as { liquidityUsd?: number }).liquidityUsd === 0) && (
-        <div className="p-4 rounded-lg bg-amber-900/30 border border-amber-700 text-amber-200 text-sm flex items-center justify-between gap-4">
-          <span>Your supply is not yet used as collateral. Enable it to borrow against your deposits and see Borrow Limit / Liquidity.</span>
+      {showEnterMarkets && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
+          <span>供应尚未作为抵押品，启用后可借款并显示额度。</span>
           <button
             type="button"
             onClick={handleEnterMarkets}
             disabled={entering}
-            className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-medium whitespace-nowrap"
+            className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 font-medium text-white hover:bg-amber-500 disabled:opacity-50"
           >
-            {entering ? '...' : 'Enable as collateral'}
+            {entering ? '处理中...' : '启用为抵押'}
           </button>
         </div>
       )}
 
-      {/* Supply Positions */}
       {supplyPositions.length > 0 && (
-        <div>
-          <h3 className="text-xl font-bold mb-4">Supply Positions</h3>
-          <div className="bg-slate-800 rounded-lg overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-slate-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Asset</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Balance</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Value (USD)</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">APY</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Collateral Factor</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700">
-                {supplyPositions.map((position) => {
-                  const price = position.price ?? (position as { priceUsd?: number }).priceUsd ?? 0;
-                  const valueUSD = (position.supplyUnderlying ?? 0) * price;
-                  const balance = (position.supplyUnderlying ?? 0).toFixed(4);
-                  
-                  return (
-                    <tr key={position.market} className="hover:bg-slate-750">
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-white">{position.symbol}</div>
-                      </td>
-                      <td className="px-6 py-4 text-right text-white">
-                        {balance}
-                      </td>
-                      <td className="px-6 py-4 text-right text-white">
-                        ${valueUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-6 py-4 text-right text-green-400">
-                        {((position.supplyAPY ?? (position as { supplyRatePerYear?: number }).supplyRatePerYear ?? 0) * 100).toFixed(2)}%
-                      </td>
-                      <td className="px-6 py-4 text-right text-gray-300">
-                        {((position.collateralFactor ?? 0) * 100).toFixed(0)}%
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => onWithdraw(position)}
-                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
-                        >
-                          Withdraw
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <PositionTable
+          title="供应头寸"
+          positions={supplyPositions}
+          type="supply"
+          valueKey="supplyUnderlying"
+          apyKey="supplyRatePerYear"
+          onAction={onWithdraw}
+          actionLabel="提取"
+          actionClass="bg-red-600/90 hover:bg-red-500 text-white"
+        />
       )}
 
-      {/* Borrow Positions */}
       {borrowPositions.length > 0 && (
-        <div>
-          <h3 className="text-xl font-bold mb-4">Borrow Positions</h3>
-          <div className="bg-slate-800 rounded-lg overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-slate-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Asset</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Borrowed</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Value (USD)</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">APY</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700">
-                {borrowPositions.map((position) => {
-                  const price = position.price ?? (position as { priceUsd?: number }).priceUsd ?? 0;
-                  const valueUSD = (position.borrowBalance ?? 0) * price;
-                  const balance = (position.borrowBalance ?? 0).toFixed(4);
-                  
-                  return (
-                    <tr key={position.market} className="hover:bg-slate-750">
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-white">{position.symbol}</div>
-                      </td>
-                      <td className="px-6 py-4 text-right text-white">
-                        {balance}
-                      </td>
-                      <td className="px-6 py-4 text-right text-white">
-                        ${valueUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-6 py-4 text-right text-yellow-400">
-                        {((position.borrowAPY ?? (position as { borrowRatePerYear?: number }).borrowRatePerYear ?? 0) * 100).toFixed(2)}%
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => onRepay(position)}
-                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
-                        >
-                          Repay
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <PositionTable
+          title="借款头寸"
+          positions={borrowPositions}
+          type="borrow"
+          valueKey="borrowBalance"
+          apyKey="borrowRatePerYear"
+          onAction={onRepay}
+          actionLabel="还款"
+          actionClass="bg-teal-600/90 hover:bg-teal-500 text-white"
+        />
+      )}
+
+      {supplyPositions.length === 0 && borrowPositions.length === 0 && (
+        <p className="text-zinc-500 text-sm text-center py-6">暂无供应或借款头寸</p>
       )}
     </div>
   );
-};
+}

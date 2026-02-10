@@ -22,7 +22,9 @@ export const useMarkets = () => {
       const data = await API.getMarkets();
       setMarkets(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '获取市场数据失败');
+      const msg = err instanceof Error ? err.message : '获取市场数据失败';
+      setError(msg);
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -58,7 +60,9 @@ export const useAccount = (address: string | null) => {
       const data = await API.getAccount(address);
       setAccount(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '获取账户数据失败');
+      const msg = err instanceof Error ? err.message : '获取账户数据失败';
+      setError(msg);
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -71,6 +75,9 @@ export const useAccount = (address: string | null) => {
       const interval = setInterval(fetchAccount, 15000);
       return () => clearInterval(interval);
     }
+    setAccount(null);
+    setLoading(false);
+    setError(null);
     return undefined;
   }, [address, fetchAccount]);
 

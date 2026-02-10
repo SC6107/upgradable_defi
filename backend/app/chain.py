@@ -385,6 +385,7 @@ class ChainReader:
         }
 
     def get_account(self, account: str) -> Dict[str, Any]:
+        account = (account or "").strip()
         checksum = self._checksum(account)
         if not checksum:
             raise ValueError("Invalid address")
