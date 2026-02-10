@@ -11,8 +11,10 @@ interface ActionModalProps {
   onClose: () => void;
   action: LendingAction;
   market: LendingMarket | null;
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
   maxAmount?: string;
+  /** Comptroller address; when set, supply will call enterMarkets so position counts as collateral */
+  comptrollerAddress?: string | null;
 }
 
 export const ActionModal: React.FC<ActionModalProps> = ({
@@ -22,6 +24,7 @@ export const ActionModal: React.FC<ActionModalProps> = ({
   market,
   onSuccess,
   maxAmount = '0',
+  comptrollerAddress,
 }) => {
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -54,7 +57,7 @@ export const ActionModal: React.FC<ActionModalProps> = ({
       
       switch (action) {
         case 'supply':
-          hash = await Web3Service.supply(market.market, amount, market.underlying);
+          hash = await Web3Service.supply(market.market, amount, market.underlying ?? '', comptrollerAddress);
           break;
         case 'withdraw':
           hash = await Web3Service.withdraw(market.market, amount, true);
@@ -70,10 +73,9 @@ export const ActionModal: React.FC<ActionModalProps> = ({
       }
 
       setTxHash(hash);
-      setTimeout(() => {
-        onSuccess();
-        onClose();
-      }, 2000);
+      await Promise.resolve(onSuccess());
+      await new Promise((r) => setTimeout(r, 600));
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Transaction failed');
     } finally {

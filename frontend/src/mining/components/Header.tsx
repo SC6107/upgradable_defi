@@ -2,8 +2,8 @@ import React from 'react';
 import { useWallet } from '@/mining/hooks/useWallet';
 
 interface HeaderProps {
-  activeTab: 'pools' | 'portfolio' | 'transactions' | 'analytics';
-  setActiveTab: (tab: 'pools' | 'portfolio' | 'transactions' | 'analytics') => void;
+  activeTab: 'pools' | 'portfolio' | 'stake' | 'transactions' | 'analytics';
+  setActiveTab: (tab: 'pools' | 'portfolio' | 'stake' | 'transactions' | 'analytics') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
@@ -29,7 +29,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
 
           {/* Navigation */}
           <nav className="hidden md:flex gap-1">
-            {(['pools', 'portfolio', 'transactions', 'analytics'] as const).map((tab) => (
+            {(['pools', 'portfolio', 'stake', 'transactions', 'analytics'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -39,7 +39,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                     : 'text-gray-400 hover:text-white hover:bg-slate-800'
                 }`}
               >
-                {tab === 'analytics' ? '📊 Analytics' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'analytics' ? '📊 Analytics' : tab === 'stake' ? '⛏️ Stake GOV' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
           </nav>
@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
 
         {/* Mobile Navigation */}
         <div className="md:hidden flex gap-1 pb-4 overflow-x-auto">
-          {(['pools', 'portfolio', 'transactions', 'analytics'] as const).map((tab) => (
+            {(['pools', 'portfolio', 'stake', 'transactions', 'analytics'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}

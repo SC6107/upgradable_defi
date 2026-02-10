@@ -222,7 +222,7 @@ class ChainReader:
                     if rate_per_second is not None:
                         supply_rate_year = rate_per_second * seconds
 
-            utilization = None
+            utilization = 0.0
             if cash is not None and total_borrows is not None:
                 denom = cash + total_borrows - (total_reserves or 0)
                 if denom > 0:
@@ -646,6 +646,7 @@ class ChainReader:
                         "decimals": self._call_fn(rewards_erc20, "decimals") if rewards_erc20 else None,
                     }
 
+        addresses = load_addresses()
         return {
             "chainId": self.w3.eth.chain_id,
             "comptroller": self.comptroller.address if self.comptroller else None,
@@ -655,6 +656,36 @@ class ChainReader:
             "marketDetails": markets,
             "liquidityMiningDetails": liquidity_mining,
             "rewardTokens": list(reward_tokens.values()),
+            "governor": addresses.get("governor"),
+            "protocolTimelock": addresses.get("protocolTimelock"),
+        }
+
+    def get_protocol_upgrade_info(self) -> Dict[str, Any]:
+        """Return upgradeability info: UUPS pattern, timelock, and contract versions."""
+        versions: Dict[str, Any] = {}
+        if self.comptroller:
+            v = self._call_fn(self.comptroller, "version", default=None)
+            if v is not None:
+                versions["comptroller"] = int(v)
+        if self.price_oracle:
+            v = self._call_fn(self.price_oracle, "version", default=None)
+            if v is not None:
+                versions["priceOracle"] = int(v)
+        versions["markets"] = []
+        for i, market in enumerate(self.markets):
+            v = self._call_fn(market, "version", default=None)
+            versions["markets"].append({"index": i, "version": int(v) if v is not None else None})
+        versions["liquidityMining"] = []
+        for i, mining in enumerate(self.liquidity_mining):
+            v = self._call_fn(mining, "version", default=None)
+            versions["liquidityMining"].append({"index": i, "version": int(v) if v is not None else None})
+
+        return {
+            "upgradeable": True,
+            "pattern": "UUPS",
+            "description": "Protocol contracts use UUPS (EIP-1822) upgradeable proxies. Storage layout is preserved across upgrades via ERC-7201 namespaced storage.",
+            "timelockDelayHours": 24,
+            "contractVersions": versions,
         }
 
     def get_liquidity_mining(self) -> List[Dict[str, Any]]:

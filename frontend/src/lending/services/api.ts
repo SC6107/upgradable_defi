@@ -32,7 +32,7 @@ class LendingAPIService {
    */
   async getMarkets(): Promise<LendingMarket[]> {
     const response = await apiClient.get('/markets');
-    return response.data.items || [];
+    return response.data?.items ?? [];
   }
 
   /**
@@ -41,23 +41,26 @@ class LendingAPIService {
   async getAccount(address: string): Promise<AccountData> {
     const response = await apiClient.get(`/accounts/${address}`);
     const data = response.data;
-    
-    // Calculate additional metrics
     const positions = data.positions || [];
+    // Backend sends price as USD float (e.g. 1.0) and supplyUnderlying/borrowBalance as token amounts (e.g. 300)
     const totalSupplied = positions.reduce((sum: number, pos: UserPosition) => {
-      return sum + (pos.supplyUnderlying * pos.price) / 1e8;
+      const price = pos.price ?? (pos as { priceUsd?: number }).priceUsd ?? 0;
+      return sum + (pos.supplyUnderlying ?? 0) * price;
     }, 0);
-    
     const totalBorrowed = positions.reduce((sum: number, pos: UserPosition) => {
-      return sum + (pos.borrowBalance * pos.price) / 1e8;
+      const price = pos.price ?? (pos as { priceUsd?: number }).priceUsd ?? 0;
+      return sum + (pos.borrowBalance ?? 0) * price;
     }, 0);
-    
-    const borrowLimit = positions.reduce((sum: number, pos: UserPosition) => {
-      const supplyValue = (pos.supplyUnderlying * pos.price) / 1e8;
-      return sum + supplyValue * pos.collateralFactor;
+    const borrowLimitFromPositions = positions.reduce((sum: number, pos: UserPosition) => {
+      const price = pos.price ?? (pos as { priceUsd?: number }).priceUsd ?? 0;
+      const supplyValue = (pos.supplyUnderlying ?? 0) * price;
+      return sum + supplyValue * (pos.collateralFactor ?? 0);
     }, 0);
-    
-    const availableToBorrow = Math.max(0, borrowLimit - totalBorrowed);
+    const liquidityUsd = data.liquidityUsd ?? data.liquidity;
+    const borrowLimit = typeof liquidityUsd === 'number' && totalBorrowed >= 0
+      ? totalBorrowed + liquidityUsd
+      : borrowLimitFromPositions;
+    const availableToBorrow = typeof liquidityUsd === 'number' ? liquidityUsd : Math.max(0, borrowLimit - totalBorrowed);
 
     return {
       ...data,
@@ -97,6 +100,14 @@ class LendingAPIService {
   async getMarketStats(marketAddress: string): Promise<Record<string, unknown>> {
     const response = await apiClient.get(`/markets/${marketAddress}/stats`);
     return response.data;
+  }
+
+  /**
+   * Get protocol contract addresses (comptroller for enterMarkets)
+   */
+  async getContractAddresses(): Promise<{ comptroller?: string | null }> {
+    const response = await apiClient.get('/contracts/addresses');
+    return response.data ?? {};
   }
 }
 

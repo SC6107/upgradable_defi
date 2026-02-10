@@ -2,24 +2,32 @@
  * Lending App Component
  * Main application component for DeFi lending platform
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { MarketsTable } from './components/MarketsTable';
 import { UserPositions } from './components/UserPositions';
 import { ActionModal } from './components/ActionModal';
+import { LiquidateSection } from './components/LiquidateSection';
+import { ProtocolUpgradeInfo } from '../ProtocolUpgradeInfo';
 import { useMarkets, useAccount, useWallet } from './hooks/useLending';
+import API from './services/api';
 import type { LendingMarket, LendingAction, UserPosition } from './types';
 
 function LendingApp() {
-  const [activeTab, setActiveTab] = useState<'markets' | 'positions'>('markets');
+  const [activeTab, setActiveTab] = useState<'markets' | 'positions' | 'liquidate'>('markets');
   const [modalOpen, setModalOpen] = useState(false);
   const [currentAction, setCurrentAction] = useState<LendingAction>('supply');
   const [selectedMarket, setSelectedMarket] = useState<LendingMarket | null>(null);
   const [maxAmount, setMaxAmount] = useState('0');
+  const [comptrollerAddress, setComptrollerAddress] = useState<string | null>(null);
 
   const { markets, loading: marketsLoading, refetch: refetchMarkets } = useMarkets();
   const { account, isConnected, connect, disconnect } = useWallet();
   const { account: accountData, loading: accountLoading, refetch: refetchAccount } = useAccount(account);
+
+  useEffect(() => {
+    API.getContractAddresses().then((addr) => setComptrollerAddress(addr.comptroller ?? null)).catch(() => {});
+  }, []);
 
   const handleSupply = (market: LendingMarket) => {
     setSelectedMarket(market);
@@ -56,9 +64,8 @@ function LendingApp() {
     }
   };
 
-  const handleModalSuccess = () => {
-    refetchMarkets();
-    refetchAccount();
+  const handleModalSuccess = async () => {
+    await Promise.all([refetchMarkets(), refetchAccount()]);
   };
 
   // Calculate stats
@@ -160,6 +167,18 @@ function LendingApp() {
                 connected={isConnected}
                 onWithdraw={handleWithdraw}
                 onRepay={handleRepay}
+                comptrollerAddress={comptrollerAddress}
+                onRefetch={refetchAccount}
+              />
+            </div>
+          )}
+
+          {activeTab === 'liquidate' && (
+            <div>
+              <LiquidateSection
+                markets={markets}
+                isConnected={isConnected}
+                onSuccess={() => { refetchMarkets(); refetchAccount(); }}
               />
             </div>
           )}
@@ -209,6 +228,9 @@ function LendingApp() {
             </p>
           </div>
         </div>
+
+        {/* Protocol upgradeability */}
+        <ProtocolUpgradeInfo />
       </main>
 
       {/* Action Modal */}
@@ -219,6 +241,7 @@ function LendingApp() {
         market={selectedMarket}
         onSuccess={handleModalSuccess}
         maxAmount={maxAmount}
+        comptrollerAddress={comptrollerAddress}
       />
     </div>
   );

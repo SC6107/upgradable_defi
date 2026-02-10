@@ -33,23 +33,29 @@ export const MarketsTable: React.FC<MarketsTableProps> = ({
   const sortedMarkets = [...markets].sort((a, b) => {
     let aVal: string | number;
     let bVal: string | number;
-    
+    const decA = a.decimals ?? 18;
+    const decB = b.decimals ?? 18;
+    const priceA = a.price ?? (a as { priceUsd?: number }).priceUsd ?? 0;
+    const priceB = b.price ?? (b as { priceUsd?: number }).priceUsd ?? 0;
+    const supplyA = a.totalSupply ?? (a as { totalSupplyUnderlying?: number }).totalSupplyUnderlying ?? 0;
+    const supplyB = b.totalSupply ?? (b as { totalSupplyUnderlying?: number }).totalSupplyUnderlying ?? 0;
+
     switch (sortBy) {
       case 'symbol':
-        aVal = a.symbol;
-        bVal = b.symbol;
+        aVal = a.symbol ?? '';
+        bVal = b.symbol ?? '';
         break;
       case 'totalSupply':
-        aVal = (a.totalSupply * a.price) / (10 ** (a.decimals + 8));
-        bVal = (b.totalSupply * b.price) / (10 ** (b.decimals + 8));
+        aVal = priceA && supplyA != null ? (supplyA * priceA) / (10 ** (decA + 8)) : 0;
+        bVal = priceB && supplyB != null ? (supplyB * priceB) / (10 ** (decB + 8)) : 0;
         break;
       case 'supplyAPY':
-        aVal = a.supplyRatePerYear;
-        bVal = b.supplyRatePerYear;
+        aVal = (a as { supplyAprPct?: number }).supplyAprPct ?? a.supplyRatePerYear ?? 0;
+        bVal = (b as { supplyAprPct?: number }).supplyAprPct ?? b.supplyRatePerYear ?? 0;
         break;
       case 'borrowAPY':
-        aVal = a.borrowRatePerYear;
-        bVal = b.borrowRatePerYear;
+        aVal = (a as { borrowAprPct?: number }).borrowAprPct ?? a.borrowRatePerYear ?? 0;
+        bVal = (b as { borrowAprPct?: number }).borrowAprPct ?? b.borrowRatePerYear ?? 0;
         break;
       default:
         return 0;
@@ -58,7 +64,9 @@ export const MarketsTable: React.FC<MarketsTableProps> = ({
     if (typeof aVal === 'string' && typeof bVal === 'string') {
       return sortDesc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
     }
-    return sortDesc ? (bVal as number) - (aVal as number) : (aVal as number) - (bVal as number);
+    const an = Number(aVal);
+    const bn = Number(bVal);
+    return sortDesc ? bn - an : an - bn;
   });
 
   if (loading) {
@@ -80,7 +88,17 @@ export const MarketsTable: React.FC<MarketsTableProps> = ({
     );
   }
 
+  const hasAnyChainData = markets.some(
+    (m) => m.symbol != null || m.totalSupply != null || m.price != null
+  );
+
   return (
+    <div>
+      {!hasAnyChainData && (
+        <div className="mb-4 p-4 rounded-lg bg-amber-900/30 border border-amber-700 text-amber-200 text-sm">
+          Chain data is missing (symbol, rates, price are empty). Ensure Anvil is running and contracts are deployed for the addresses in use; then restart the backend.
+        </div>
+      )}
     <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -143,25 +161,39 @@ export const MarketsTable: React.FC<MarketsTableProps> = ({
           </thead>
           <tbody className="divide-y divide-slate-700">
             {sortedMarkets.map((market) => {
-              const totalSupplyUSD = (market.totalSupply * market.price) / (10 ** (market.decimals + 8));
-              const totalBorrowsUSD = (market.totalBorrows * market.price) / (10 ** (market.decimals + 8));
-              const supplyAPY = (market.supplyRatePerYear * 100).toFixed(2);
-              const borrowAPY = (market.borrowRatePerYear * 100).toFixed(2);
-              const utilization = (market.utilization * 100).toFixed(2);
+              const symbol = market.symbol ?? '—';
+              const marketAddr = market.market ?? '';
+              const decimals = market.decimals ?? 18;
+              const price = market.price ?? (market as { priceUsd?: number }).priceUsd ?? 0;
+              const totalSupply = market.totalSupply ?? (market as { totalSupplyUnderlying?: number }).totalSupplyUnderlying ?? 0;
+              const totalBorrows = market.totalBorrows ?? (market as { totalBorrowsUnderlying?: number }).totalBorrowsUnderlying ?? 0;
+              const totalSupplyUSD = price && totalSupply != null
+                ? (totalSupply * price) / (10 ** (decimals + 8))
+                : (market as { totalSupplyUsd?: number }).totalSupplyUsd ?? 0;
+              const totalBorrowsUSD = price && totalBorrows != null
+                ? (totalBorrows * price) / (10 ** (decimals + 8))
+                : (market as { totalBorrowsUsd?: number }).totalBorrowsUsd ?? 0;
+              const supplyApr = (market as { supplyAprPct?: number }).supplyAprPct ?? market.supplyRatePerYear;
+              const borrowApr = (market as { borrowAprPct?: number }).borrowAprPct ?? market.borrowRatePerYear;
+              const supplyAPY = supplyApr != null ? (supplyApr < 1 ? supplyApr * 100 : supplyApr).toFixed(2) : '0.00';
+              const borrowAPY = borrowApr != null ? (borrowApr < 1 ? borrowApr * 100 : borrowApr).toFixed(2) : '0.00';
+              const util = market.utilization ?? 0;
+              const utilization = (typeof util === 'number' ? util * 100 : 0).toFixed(2);
+              const symbolDisplay = symbol.length >= 2 ? symbol.substring(0, 2) : (marketAddr ? marketAddr.slice(2, 4) : '—');
 
               return (
-                <tr key={market.market} className="hover:bg-slate-750">
+                <tr key={marketAddr || symbol} className="hover:bg-slate-750">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="h-10 w-10 flex-shrink-0 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                        {market.symbol.substring(0, 2)}
+                        {symbolDisplay}
                       </div>
                       <div className="ml-4">
                         <div className="text-sm font-medium text-white">
-                          {market.symbol}
+                          {symbol}
                         </div>
                         <div className="text-xs text-gray-400">
-                          {market.market.substring(0, 8)}...
+                          {marketAddr ? `${marketAddr.substring(0, 8)}...` : '—'}
                         </div>
                       </div>
                     </div>
@@ -221,6 +253,7 @@ export const MarketsTable: React.FC<MarketsTableProps> = ({
           </tbody>
         </table>
       </div>
+    </div>
     </div>
   );
 };
