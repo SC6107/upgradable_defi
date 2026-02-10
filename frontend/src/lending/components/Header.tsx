@@ -9,8 +9,8 @@ interface HeaderProps {
   isConnected: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
-  activeTab: 'markets' | 'positions';
-  setActiveTab: (tab: 'markets' | 'positions') => void;
+  activeTab: 'markets' | 'positions' | 'liquidate';
+  setActiveTab: (tab: 'markets' | 'positions' | 'liquidate') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -61,6 +61,16 @@ export const Header: React.FC<HeaderProps> = ({
             >
               Positions
             </button>
+            <button
+              onClick={() => setActiveTab('liquidate')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === 'liquidate'
+                  ? 'text-white bg-slate-700'
+                  : 'text-gray-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              Liquidate
+            </button>
           </nav>
 
           {/* Wallet Connection */}
@@ -110,6 +120,16 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             Positions
+          </button>
+          <button
+            onClick={() => setActiveTab('liquidate')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
+              activeTab === 'liquidate'
+                ? 'text-white bg-slate-700'
+                : 'text-gray-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            Liquidate
           </button>
         </div>
       </div>

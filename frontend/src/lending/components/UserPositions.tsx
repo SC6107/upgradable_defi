@@ -2,10 +2,9 @@
  * User Positions Component
  * Displays user's supply and borrow positions
  */
-import React from 'react';
-import type { AccountData } from '../types';
-
-import type { UserPosition } from '../types';
+import React, { useState } from 'react';
+import type { AccountData, UserPosition } from '../types';
+import Web3Service from '../services/web3';
 
 interface UserPositionsProps {
   account: AccountData | null;
@@ -13,6 +12,9 @@ interface UserPositionsProps {
   connected: boolean;
   onWithdraw: (position: UserPosition) => void;
   onRepay: (position: UserPosition) => void;
+  /** When set, show "Enable as collateral" if liquidity is 0 but user has supply (enter markets once) */
+  comptrollerAddress?: string | null;
+  onRefetch?: () => void;
 }
 
 export const UserPositions: React.FC<UserPositionsProps> = ({
@@ -21,7 +23,22 @@ export const UserPositions: React.FC<UserPositionsProps> = ({
   connected,
   onWithdraw,
   onRepay,
+  comptrollerAddress,
+  onRefetch,
 }) => {
+  const [entering, setEntering] = useState(false);
+  const handleEnterMarkets = async () => {
+    if (!comptrollerAddress || !account || !onRefetch) return;
+    const marketsWithSupply = account.positions.filter((p) => p.supplyUnderlying > 0).map((p) => p.market);
+    if (marketsWithSupply.length === 0) return;
+    setEntering(true);
+    try {
+      await Web3Service.enterMarkets(comptrollerAddress, marketsWithSupply);
+      await onRefetch();
+    } finally {
+      setEntering(false);
+    }
+  };
   if (!connected) {
     return (
       <div className="bg-slate-800 rounded-lg p-8 text-center">
@@ -80,6 +97,21 @@ export const UserPositions: React.FC<UserPositionsProps> = ({
         </div>
       </div>
 
+      {/* Hint: enter markets so supply counts as collateral (liquidity) */}
+      {supplyPositions.length > 0 && comptrollerAddress && onRefetch && (account.liquidity === 0 || (account as { liquidityUsd?: number }).liquidityUsd === 0) && (
+        <div className="p-4 rounded-lg bg-amber-900/30 border border-amber-700 text-amber-200 text-sm flex items-center justify-between gap-4">
+          <span>Your supply is not yet used as collateral. Enable it to borrow against your deposits and see Borrow Limit / Liquidity.</span>
+          <button
+            type="button"
+            onClick={handleEnterMarkets}
+            disabled={entering}
+            className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-medium whitespace-nowrap"
+          >
+            {entering ? '...' : 'Enable as collateral'}
+          </button>
+        </div>
+      )}
+
       {/* Supply Positions */}
       {supplyPositions.length > 0 && (
         <div>
@@ -98,8 +130,9 @@ export const UserPositions: React.FC<UserPositionsProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-700">
                 {supplyPositions.map((position) => {
-                  const valueUSD = (position.supplyUnderlying * position.price) / 1e8;
-                  const balance = (position.supplyUnderlying / (10 ** position.decimals)).toFixed(4);
+                  const price = position.price ?? (position as { priceUsd?: number }).priceUsd ?? 0;
+                  const valueUSD = (position.supplyUnderlying ?? 0) * price;
+                  const balance = (position.supplyUnderlying ?? 0).toFixed(4);
                   
                   return (
                     <tr key={position.market} className="hover:bg-slate-750">
@@ -113,10 +146,10 @@ export const UserPositions: React.FC<UserPositionsProps> = ({
                         ${valueUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-6 py-4 text-right text-green-400">
-                        {(position.supplyAPY * 100).toFixed(2)}%
+                        {((position.supplyAPY ?? (position as { supplyRatePerYear?: number }).supplyRatePerYear ?? 0) * 100).toFixed(2)}%
                       </td>
                       <td className="px-6 py-4 text-right text-gray-300">
-                        {(position.collateralFactor * 100).toFixed(0)}%
+                        {((position.collateralFactor ?? 0) * 100).toFixed(0)}%
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
@@ -152,8 +185,9 @@ export const UserPositions: React.FC<UserPositionsProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-700">
                 {borrowPositions.map((position) => {
-                  const valueUSD = (position.borrowBalance * position.price) / 1e8;
-                  const balance = (position.borrowBalance / (10 ** position.decimals)).toFixed(4);
+                  const price = position.price ?? (position as { priceUsd?: number }).priceUsd ?? 0;
+                  const valueUSD = (position.borrowBalance ?? 0) * price;
+                  const balance = (position.borrowBalance ?? 0).toFixed(4);
                   
                   return (
                     <tr key={position.market} className="hover:bg-slate-750">
@@ -167,7 +201,7 @@ export const UserPositions: React.FC<UserPositionsProps> = ({
                         ${valueUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-6 py-4 text-right text-yellow-400">
-                        {(position.borrowAPY * 100).toFixed(2)}%
+                        {((position.borrowAPY ?? (position as { borrowRatePerYear?: number }).borrowRatePerYear ?? 0) * 100).toFixed(2)}%
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Header } from './components/Header';
 import { PoolsTable } from './components/PoolsTable';
+import { StakeRewards } from './components/StakeRewards';
+import { ProtocolUpgradeInfo } from '../ProtocolUpgradeInfo';
 import { UserPortfolio } from './components/UserPortfolio';
 import { Transactions } from './components/Transactions';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
@@ -13,7 +15,7 @@ import { useWallet } from '../mining/hooks/useWallet';
  * Liquidity mining interface for DeFi protocol
  */
 function MiningApp() {
-  const [activeTab, setActiveTab] = useState<'pools' | 'portfolio' | 'transactions' | 'analytics'>('pools');
+  const [activeTab, setActiveTab] = useState<'pools' | 'portfolio' | 'stake' | 'transactions' | 'analytics'>('pools');
   const { markets, loading: marketsLoading } = useMarkets();
   const { wallet } = useWallet();
   const { account, loading: accountLoading } = useAccount(wallet.account || null);
@@ -97,6 +99,15 @@ function MiningApp() {
             </div>
           )}
 
+          {activeTab === 'stake' && (
+            <div>
+              <StakeRewards
+                account={wallet.account}
+                isConnected={wallet.isConnected}
+              />
+            </div>
+          )}
+
           {activeTab === 'transactions' && (
             <div>
               <h2 className="text-3xl font-bold mb-6">Recent Transactions</h2>
@@ -121,6 +132,7 @@ function MiningApp() {
             </p>
           )}
         </div>
+        <ProtocolUpgradeInfo />
       </main>
     </div>
   );

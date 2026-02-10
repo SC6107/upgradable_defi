@@ -93,6 +93,33 @@ export interface ContractAddresses {
   marketDetails: ContractAddressMarketDetail[];
   liquidityMiningDetails: ContractAddressLiquidityMiningDetail[];
   rewardTokens: ContractAddressRewardToken[];
+  governor?: string | null;
+  protocolTimelock?: string | null;
+}
+
+export interface LiquidityMiningPool {
+  mining: string;
+  stakingToken: string | null;
+  stakingSymbol: string | null;
+  stakingDecimals: number | null;
+  rewardsToken: string | null;
+  rewardsSymbol: string | null;
+  rewardsDecimals: number | null;
+  rewardRate: number | null;
+  totalStaked: number | null;
+  rewardsDuration: number | null;
+  periodFinish: number | null;
+  apr?: number | null;
+  apy?: number | null;
+}
+
+export interface LiquidityMiningAccountPosition {
+  mining: string;
+  stakingToken: string | null;
+  stakingSymbol: string | null;
+  stakedBalance: number | null;
+  earned: number | null;
+  rewardsSymbol: string | null;
 }
 
 class APIService {
@@ -103,7 +130,7 @@ class APIService {
 
   async getMarkets(): Promise<Market[]> {
     const response = await apiClient.get('/markets');
-    return response.data.items;
+    return response.data?.items ?? [];
   }
 
   async getAccount(address: string): Promise<Account> {
@@ -116,6 +143,16 @@ class APIService {
       params: refresh ? { refresh: 'true' } : undefined,
     });
     return response.data;
+  }
+
+  async getLiquidityMining(): Promise<LiquidityMiningPool[]> {
+    const response = await apiClient.get('/liquidity-mining');
+    return response.data.items ?? [];
+  }
+
+  async getLiquidityMiningAccount(address: string): Promise<LiquidityMiningAccountPosition[]> {
+    const response = await apiClient.get(`/liquidity-mining/${address}`);
+    return response.data ?? [];
   }
 
   async getEvents(

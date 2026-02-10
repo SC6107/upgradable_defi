@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import MiningApp from './mining/App';
 import LendingApp from './lending/App';
+import GovernanceApp from './governance/GovernanceApp';
 
 /**
  * Main App Component
@@ -9,9 +10,10 @@ import LendingApp from './lending/App';
  * Available pages:
  * - Lending: DeFi lending and borrowing interface
  * - Mining: Liquidity mining and rewards interface
+ * - Governance: Proposals, vote, timelock execute
  */
 function App() {
-  const [currentApp, setCurrentApp] = useState<'lending' | 'mining'>('lending');
+  const [currentApp, setCurrentApp] = useState<'lending' | 'mining' | 'governance'>('lending');
 
   return (
     <div className="min-h-screen">
@@ -87,12 +89,43 @@ function App() {
           >
             ⛏️ 挖矿
           </button>
+          <button
+            onClick={() => setCurrentApp('governance')}
+            style={{
+              padding: '10px 20px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s ease',
+              background: currentApp === 'governance' ? '#d97706' : '#1e293b',
+              color: currentApp === 'governance' ? 'white' : '#94a3b8',
+              transform: currentApp === 'governance' ? 'scale(1.05)' : 'scale(1)',
+              boxShadow: currentApp === 'governance' ? '0 10px 15px -3px rgba(217, 119, 6, 0.4)' : 'none',
+              border: currentApp === 'governance' ? '2px solid #f59e0b' : '2px solid #334155'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = currentApp === 'governance' ? '#b45309' : '#334155';
+              e.currentTarget.style.color = 'white';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = currentApp === 'governance' ? '#d97706' : '#1e293b';
+              e.currentTarget.style.color = currentApp === 'governance' ? 'white' : '#94a3b8';
+            }}
+          >
+            🗳️ 治理
+          </button>
         </div>
       </div>
 
       {/* Render current app without padding */}
       <div>
-        {currentApp === 'lending' ? <LendingApp /> : <MiningApp />}
+        {currentApp === 'lending' && <LendingApp />}
+        {currentApp === 'mining' && <MiningApp />}
+        {currentApp === 'governance' && <GovernanceApp />}
       </div>
     </div>
   );

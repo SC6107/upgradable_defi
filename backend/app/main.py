@@ -81,6 +81,15 @@ def get_contract_addresses(
     return chain.get_contract_addresses()
 
 
+@app.get("/protocol/upgrade-info", tags=["Contracts"], summary="Get protocol upgradeability info")
+def get_protocol_upgrade_info():
+    """Return upgradeability metadata: UUPS pattern, timelock delay, and on-chain contract versions."""
+    chain = getattr(app.state, "chain", None)
+    if not chain:
+        raise HTTPException(status_code=500, detail="Chain reader not initialized")
+    return chain.get_protocol_upgrade_info()
+
+
 @app.get("/markets", tags=["Markets"], summary="List all markets")
 def get_markets():
     """Return detailed information for every lending market including supply/borrow rates, prices, and collateral factors."""
