@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import MiningApp from './mining/App';
 import LendingApp from './lending/App';
-import GovernanceApp from './governance/GovernanceApp';
 
 const appSwitcherBase = {
   position: 'fixed' as const,
@@ -22,7 +21,6 @@ function AppSwitcher() {
   const path = location.pathname;
   const isLending = path.startsWith('/lending');
   const isMining = path.startsWith('/mining');
-  const isGov = path.startsWith('/governance');
 
   const btn = (to: string, active: boolean, label: string, activeColor: string) => (
     <button
@@ -48,7 +46,6 @@ function AppSwitcher() {
       <div style={{ display: 'flex', gap: '8px' }}>
         {btn('/lending/markets', isLending, '💰 借贷', '#2563eb')}
         {btn('/mining', isMining, '⛏️ 挖矿', '#9333ea')}
-        {btn('/governance', isGov, '🗳️ 治理', '#d97706')}
       </div>
     </div>
   );
@@ -63,7 +60,6 @@ function App() {
         <Route path="/lending" element={<Navigate to="/lending/markets" replace />} />
         <Route path="/lending/*" element={<LendingApp />} />
         <Route path="/mining" element={<MiningApp />} />
-        <Route path="/governance" element={<GovernanceApp />} />
       </Routes>
     </div>
   );
