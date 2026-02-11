@@ -1,127 +1,32 @@
-import axios from 'axios';
+/**
+ * Mining API Service
+ * Uses the shared apiClient which normalizes snake_case keys to camelCase automatically.
+ */
+import apiClient from '@/shared/services/apiClient';
+import type {
+  Market,
+  Account,
+  Event,
+  ContractAddresses,
+  LiquidityMiningPool,
+  LiquidityMiningAccountPosition,
+} from '@/shared/types/mining';
+import type { HealthStatus } from '@/shared/types/common';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
-
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  // Sepolia reads can exceed 10s due multiple on-chain RPC calls.
-  timeout: 60000,
-});
-
-export interface Market {
-  market: string;
-  underlying: string;
-  symbol: string;
-  decimals: number;
-  totalSupply: number;
-  totalBorrows: number;
-  totalReserves: number;
-  cash: number;
-  exchangeRate: number;
-  utilization: number;
-  borrowRatePerYear: number;
-  supplyRatePerYear: number;
-  price: number;
-  collateralFactor: number;
-  isListed: boolean;
-}
-
-export interface Position {
-  market: string;
-  underlying: string;
-  symbol: string;
-  decimals: number;
-  supplyDToken: number;
-  supplyUnderlying: number;
-  borrowBalance: number;
-  exchangeRate: number;
-  price: number;
-  collateralFactor: number;
-  isListed: boolean;
-}
-
-export interface Account {
-  account: string;
-  liquidity: number;
-  shortfall: number;
-  isHealthy: boolean;
-  positions: Position[];
-}
-
-export interface HealthStatus {
-  chainId: number;
-  latestBlock: number;
-  indexedToBlock: number;
-}
-
-export interface Event {
-  id: string;
-  contract: string;
-  event: string;
-  blockNumber: number;
-  transactionHash: string;
-  logIndex: number;
-  args: Record<string, unknown>;
-}
-
-export interface ContractAddressMarketDetail {
-  market: string;
-  underlying: string | null;
-  symbol: string | null;
-  decimals: number | null;
-}
-
-export interface ContractAddressLiquidityMiningDetail {
-  mining: string;
-  stakingToken: string | null;
-  stakingSymbol: string | null;
-  rewardsToken: string | null;
-  rewardsSymbol: string | null;
-}
-
-export interface ContractAddressRewardToken {
-  token: string;
-  symbol: string | null;
-  decimals: number | null;
-}
-
-export interface ContractAddresses {
-  chainId: number;
-  comptroller: string | null;
-  priceOracle: string | null;
-  markets: string[];
-  liquidityMining: string[];
-  marketDetails: ContractAddressMarketDetail[];
-  liquidityMiningDetails: ContractAddressLiquidityMiningDetail[];
-  rewardTokens: ContractAddressRewardToken[];
-  governor?: string | null;
-  protocolTimelock?: string | null;
-}
-
-export interface LiquidityMiningPool {
-  mining: string;
-  stakingToken: string | null;
-  stakingSymbol: string | null;
-  stakingDecimals: number | null;
-  rewardsToken: string | null;
-  rewardsSymbol: string | null;
-  rewardsDecimals: number | null;
-  rewardRate: number | null;
-  totalStaked: number | null;
-  rewardsDuration: number | null;
-  periodFinish: number | null;
-  apr?: number | null;
-  apy?: number | null;
-}
-
-export interface LiquidityMiningAccountPosition {
-  mining: string;
-  stakingToken: string | null;
-  stakingSymbol: string | null;
-  stakedBalance: number | null;
-  earned: number | null;
-  rewardsSymbol: string | null;
-}
+// Re-export types for existing consumers
+export type {
+  Market,
+  Position,
+  Account,
+  Event,
+  ContractAddressMarketDetail,
+  ContractAddressLiquidityMiningDetail,
+  ContractAddressRewardToken,
+  ContractAddresses,
+  LiquidityMiningPool,
+  LiquidityMiningAccountPosition,
+} from '@/shared/types/mining';
+export type { HealthStatus } from '@/shared/types/common';
 
 class APIService {
   async getHealth(): Promise<HealthStatus> {

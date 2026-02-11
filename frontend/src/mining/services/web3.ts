@@ -1,7 +1,11 @@
+/**
+ * Mining Web3 Service
+ * Extends Web3Base with mining-specific blockchain operations.
+ */
 import { ethers } from 'ethers';
+import { Web3Base, ERC20_ABI } from '@/shared/services/web3Base';
 import API from './api';
 
-// Contract ABIs
 const LENDING_TOKEN_ABI = [
   'function mint(uint256 mintAmount) external',
   'function redeem(uint256 redeemTokens) external',
@@ -16,15 +20,6 @@ const LENDING_TOKEN_ABI = [
   'function exchangeRateCurrent() view returns (uint256)',
   'function supplyRatePerBlock() view returns (uint256)',
   'function borrowRatePerBlock() view returns (uint256)',
-];
-
-const ERC20_ABI = [
-  'function approve(address spender, uint256 amount) external returns (bool)',
-  'function allowance(address owner, address spender) view returns (uint256)',
-  'function balanceOf(address owner) view returns (uint256)',
-  'function decimals() view returns (uint8)',
-  'function symbol() view returns (string)',
-  'function transfer(address to, uint256 amount) external returns (bool)',
 ];
 
 const COMPTROLLER_ABI = [
@@ -46,48 +41,10 @@ const LIQUIDITY_MINING_ABI = [
   'function decimals() view returns (uint8)',
 ];
 
-class Web3Service {
-  private provider: ethers.BrowserProvider | null = null;
-  private signer: ethers.JsonRpcSigner | null = null;
-  private account: string | null = null;
-
-  async connect(): Promise<string> {
-    if (!window.ethereum) {
-      throw new Error('MetaMask or compatible wallet not found');
-    }
-
-    this.provider = new ethers.BrowserProvider(window.ethereum);
-    this.signer = await this.provider.getSigner();
-    this.account = await this.signer.getAddress();
-
-    return this.account;
-  }
-
-  async disconnect(): Promise<void> {
-    this.provider = null;
-    this.signer = null;
-    this.account = null;
-  }
-
-  getAccount(): string | null {
-    return this.account;
-  }
-
-  getProvider(): ethers.BrowserProvider | null {
-    return this.provider;
-  }
-
-  getSigner(): ethers.JsonRpcSigner | null {
-    return this.signer;
-  }
-
-  // Supply tokens to a lending market
+class MiningWeb3Service extends Web3Base {
   async supply(marketAddress: string, amount: string, underlyingAddress: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('Wallet not connected');
-    }
+    if (!this.signer) throw new Error('Wallet not connected');
 
-    // Get token decimals
     const underlyingContractProvider = new ethers.Contract(underlyingAddress, ERC20_ABI, this.provider);
     const decimals = await underlyingContractProvider.decimals();
 
@@ -95,31 +52,21 @@ class Web3Service {
     const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
     const marketContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
 
-    // Check balance
     const balance = await underlyingContract.balanceOf(this.account);
     if (balance < amountBN) {
       throw new Error(`Insufficient balance. You have ${ethers.formatUnits(balance, decimals)} tokens`);
     }
 
-    // Approve the market to spend tokens
-    const allowance = await underlyingContract.allowance(this.account, marketAddress);
-    if (allowance < amountBN) {
-      const approveTx = await underlyingContract.approve(marketAddress, ethers.MaxUint256);
-      await approveTx.wait();
-    }
+    await this.ensureAllowance(underlyingAddress, marketAddress, amountBN);
 
-    // Supply tokens
     const tx = await marketContract.mint(amountBN);
     await tx.wait();
 
     return tx.hash;
   }
 
-  // Redeem tokens from a lending market
   async redeem(marketAddress: string, amount: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('Wallet not connected');
-    }
+    if (!this.signer) throw new Error('Wallet not connected');
 
     const amountBN = ethers.parseUnits(amount, 18);
     const marketContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
@@ -130,11 +77,8 @@ class Web3Service {
     return tx.hash;
   }
 
-  // Borrow tokens from a lending market
   async borrow(marketAddress: string, amount: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('Wallet not connected');
-    }
+    if (!this.signer) throw new Error('Wallet not connected');
 
     const amountBN = ethers.parseUnits(amount, 18);
     const marketContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
@@ -145,22 +89,13 @@ class Web3Service {
     return tx.hash;
   }
 
-  // Repay borrowed tokens
   async repay(marketAddress: string, amount: string, underlyingAddress: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('Wallet not connected');
-    }
+    if (!this.signer) throw new Error('Wallet not connected');
 
     const amountBN = ethers.parseUnits(amount, 18);
-    const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
     const marketContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
 
-    // Approve if needed
-    const allowance = await underlyingContract.allowance(this.account, marketAddress);
-    if (allowance < amountBN) {
-      const approveTx = await underlyingContract.approve(marketAddress, ethers.MaxUint256);
-      await approveTx.wait();
-    }
+    await this.ensureAllowance(underlyingAddress, marketAddress, amountBN);
 
     const tx = await marketContract.repayBorrow(amountBN);
     await tx.wait();
@@ -168,11 +103,8 @@ class Web3Service {
     return tx.hash;
   }
 
-  // Enter market (enable as collateral)
   async enterMarkets(markets: string[]): Promise<string> {
-    if (!this.signer) {
-      throw new Error('Wallet not connected');
-    }
+    if (!this.signer) throw new Error('Wallet not connected');
 
     const contracts = await API.getContractAddresses();
     const comptrollerAddress = contracts.comptroller;
@@ -188,38 +120,24 @@ class Web3Service {
     return tx.hash;
   }
 
-  // Stake in liquidity mining
   async stake(miningAddress: string, amount: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('Wallet not connected');
-    }
+    if (!this.signer) throw new Error('Wallet not connected');
 
     const amountBN = ethers.parseUnits(amount, 18);
     const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
 
-    // Get staking token (usually the dToken)
-    const stakingToken = await miningContract.stakingToken();
-    const stakingContract = new ethers.Contract(stakingToken, ERC20_ABI, this.signer);
+    const stakingToken: string = await miningContract.stakingToken();
 
-    // Approve
-    const allowance = await stakingContract.allowance(this.account, miningAddress);
-    if (allowance < amountBN) {
-      const approveTx = await stakingContract.approve(miningAddress, ethers.MaxUint256);
-      await approveTx.wait();
-    }
+    await this.ensureAllowance(stakingToken, miningAddress, amountBN);
 
-    // Stake
     const tx = await miningContract.stake(amountBN);
     await tx.wait();
 
     return tx.hash;
   }
 
-  // Withdraw from liquidity mining
   async withdraw(miningAddress: string, amount: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('Wallet not connected');
-    }
+    if (!this.signer) throw new Error('Wallet not connected');
 
     const amountBN = ethers.parseUnits(amount, 18);
     const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
@@ -230,11 +148,8 @@ class Web3Service {
     return tx.hash;
   }
 
-  // Claim rewards (GOV)
   async getReward(miningAddress: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('Wallet not connected');
-    }
+    if (!this.signer) throw new Error('Wallet not connected');
 
     const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
     const tx = await miningContract.getReward();
@@ -242,11 +157,8 @@ class Web3Service {
     return tx.hash;
   }
 
-  // Withdraw all staked and claim rewards
   async exit(miningAddress: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('Wallet not connected');
-    }
+    if (!this.signer) throw new Error('Wallet not connected');
 
     const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
     const tx = await miningContract.exit();
@@ -254,7 +166,6 @@ class Web3Service {
     return tx.hash;
   }
 
-  // Get user's balance of a token
   async getTokenBalance(tokenAddress: string): Promise<bigint> {
     if (!this.account) return 0n;
 
@@ -262,7 +173,6 @@ class Web3Service {
     return await tokenContract.balanceOf(this.account);
   }
 
-  // Get user's dToken balance (supplied amount)
   async getSuppliedBalance(marketAddress: string): Promise<bigint> {
     if (!this.account) return 0n;
 
@@ -271,4 +181,4 @@ class Web3Service {
   }
 }
 
-export default new Web3Service();
+export default new MiningWeb3Service();

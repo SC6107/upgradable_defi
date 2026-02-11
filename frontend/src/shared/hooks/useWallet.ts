@@ -1,5 +1,8 @@
+/**
+ * Shared wallet connection hook used by both lending and mining modules.
+ * Accepts a web3Service instance so each module uses its own Web3 singleton.
+ */
 import { useState, useCallback, useEffect } from 'react';
-import Web3Service from '../services/web3';
 import {
   TARGET_CHAIN_ID,
   TARGET_NETWORK_LABEL,
@@ -7,18 +10,15 @@ import {
   switchWalletToTargetNetwork,
 } from '@/config/network';
 
-interface WalletState {
-  account: string | null;
-  isConnected: boolean;
-  chainId: number | null;
+interface Web3ServiceLike {
+  connect(): Promise<string>;
+  disconnect(): Promise<void>;
 }
 
-export const useWallet = () => {
-  const [wallet, setWallet] = useState<WalletState>({
-    account: null,
-    isConnected: false,
-    chainId: null,
-  });
+export const useWallet = (web3Service: Web3ServiceLike) => {
+  const [account, setAccount] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [chainId, setChainId] = useState<number | null>(null);
   const [switchingNetwork, setSwitchingNetwork] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,23 +26,23 @@ export const useWallet = () => {
   const updateChainId = useCallback(async (): Promise<number | null> => {
     if (!window.ethereum) return null;
     const chainIdValue = await window.ethereum.request({ method: 'eth_chainId' });
-    const chainId =
+    const parsed =
       typeof chainIdValue === 'string'
         ? parseInt(chainIdValue, 16)
         : typeof chainIdValue === 'number'
           ? chainIdValue
           : Number.NaN;
-    if (!Number.isFinite(chainId)) return null;
-    setWallet((prev) => ({ ...prev, chainId }));
-    return chainId;
+    if (!Number.isFinite(parsed)) return null;
+    setChainId(parsed);
+    return parsed;
   }, []);
 
   const switchNetwork = useCallback(async () => {
     setSwitchingNetwork(true);
     setError(null);
     try {
-      const nextChainId = await switchWalletToTargetNetwork();
-      setWallet((prev) => ({ ...prev, chainId: nextChainId }));
+      const next = await switchWalletToTargetNetwork();
+      setChainId(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to switch to ${TARGET_NETWORK_LABEL}`);
       throw err;
@@ -55,53 +55,45 @@ export const useWallet = () => {
     setLoading(true);
     setError(null);
     try {
-      const account = await Web3Service.connect();
-      const chainId = await updateChainId();
-      if (chainId != null && !isExpectedChainId(chainId)) {
-        await switchNetwork();
-        await Web3Service.disconnect();
-        const switchedAccount = await Web3Service.connect();
-        const switchedChainId = await updateChainId();
-        setWallet({
-          account: switchedAccount,
-          isConnected: true,
-          chainId: switchedChainId,
-        });
-        return;
-      }
+      const address = await web3Service.connect();
+      setAccount(address);
+      setIsConnected(true);
 
-      setWallet({
-        account,
-        isConnected: true,
-        chainId,
-      });
+      const connectedChain = await updateChainId();
+      if (connectedChain != null && !isExpectedChainId(connectedChain)) {
+        await switchNetwork();
+        await web3Service.disconnect();
+        const nextAddress = await web3Service.connect();
+        setAccount(nextAddress);
+        await updateChainId();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect wallet');
     } finally {
       setLoading(false);
     }
-  }, [switchNetwork, updateChainId]);
+  }, [web3Service, switchNetwork, updateChainId]);
 
   const disconnect = useCallback(async () => {
-    await Web3Service.disconnect();
-    setWallet({
-      account: null,
-      isConnected: false,
-      chainId: null,
-    });
-  }, []);
+    await web3Service.disconnect();
+    setAccount(null);
+    setIsConnected(false);
+    setChainId(null);
+  }, [web3Service]);
 
   useEffect(() => {
     if (!window.ethereum) return undefined;
 
-    const handleAccountsChanged = async (...args: unknown[]) => {
+    const handleAccountsChanged = (...args: unknown[]) => {
       const raw = args[0];
-      const accounts = Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : [];
+      const accounts = Array.isArray(raw)
+        ? raw.filter((item): item is string => typeof item === 'string')
+        : [];
       if (accounts.length === 0) {
-        await disconnect();
-        return;
+        disconnect();
+      } else if (accounts[0] !== account) {
+        setAccount(accounts[0]);
       }
-      setWallet((prev) => ({ ...prev, account: accounts[0], isConnected: true }));
     };
 
     const handleChainChanged = (...args: unknown[]) => {
@@ -113,28 +105,31 @@ export const useWallet = () => {
             ? chainIdValue
             : Number.NaN;
       if (!Number.isFinite(nextChainId)) return;
-      setWallet((prev) => ({ ...prev, chainId: nextChainId }));
+      setChainId(nextChainId);
+      window.location.reload();
     };
 
-    window.ethereum.on?.('accountsChanged', handleAccountsChanged);
-    window.ethereum.on?.('chainChanged', handleChainChanged);
+    window.ethereum?.on?.('accountsChanged', handleAccountsChanged);
+    window.ethereum?.on?.('chainChanged', handleChainChanged);
 
     return () => {
       window.ethereum?.removeListener?.('accountsChanged', handleAccountsChanged);
       window.ethereum?.removeListener?.('chainChanged', handleChainChanged);
     };
-  }, [disconnect]);
+  }, [account, disconnect]);
 
   return {
-    wallet,
+    account,
+    isConnected,
+    chainId,
+    isWrongNetwork: isConnected && !isExpectedChainId(chainId),
+    expectedChainId: TARGET_CHAIN_ID,
+    expectedNetwork: TARGET_NETWORK_LABEL,
+    switchingNetwork,
+    loading,
+    error,
     connect,
     disconnect,
     switchNetwork,
-    loading,
-    switchingNetwork,
-    error,
-    expectedChainId: TARGET_CHAIN_ID,
-    expectedNetwork: TARGET_NETWORK_LABEL,
-    isWrongNetwork: wallet.isConnected && !isExpectedChainId(wallet.chainId),
   };
 };

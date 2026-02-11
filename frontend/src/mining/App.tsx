@@ -6,8 +6,10 @@ import { UserPortfolio } from './components/UserPortfolio';
 import { Transactions } from './components/Transactions';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { StatCard } from './components/StatCard';
-import { useMarkets, useAccount, useHealth } from '../mining/hooks/useAPI';
-import { useWallet } from '../mining/hooks/useWallet';
+import { useMarkets, useHealth } from '@/shared/hooks/useAPI';
+import { useWallet } from '@/shared/hooks/useWallet';
+import { useAccount } from './hooks/useAPI';
+import Web3Service from './services/web3';
 
 const MINING_TABS = ['pools', 'portfolio', 'stake', 'transactions', 'analytics'] as const;
 type MiningTab = (typeof MINING_TABS)[number];
@@ -18,38 +20,33 @@ function useMiningTab(): MiningTab {
   return MINING_TABS.includes(segment as MiningTab) ? (segment as MiningTab) : 'pools';
 }
 
-/**
- * Mining App Component
- * Liquidity mining interface for DeFi protocol
- */
 function MiningApp() {
   const activeTab = useMiningTab();
   const { markets, loading: marketsLoading } = useMarkets();
   const {
-    wallet,
-    loading: walletLoading,
-    switchingNetwork,
+    account: walletAccount,
+    isConnected,
+    chainId,
     isWrongNetwork,
     expectedNetwork,
     expectedChainId,
+    switchingNetwork,
+    loading: walletLoading,
     connect,
     disconnect,
     switchNetwork,
-  } = useWallet();
-  const { account, loading: accountLoading } = useAccount(wallet.account || null);
+  } = useWallet(Web3Service);
+  const { account, loading: accountLoading } = useAccount(walletAccount || null);
   const { health } = useHealth();
 
-  // Calculate total TVL
   const totalTVL = markets.reduce((sum, market) => {
     const supply = market.totalSupply || 0;
     const price = market.price || 0;
     const decimals = market.decimals || 18;
-    // price is in 8 decimals, supply is in token decimals
     const tvl = (supply * price) / (10 ** (decimals + 8));
     return sum + tvl;
   }, 0);
 
-  // Calculate average yield
   const avgSupplyAPR =
     markets.length > 0
       ? markets.reduce((sum, m) => sum + (m.supplyRatePerYear || 0), 0) / markets.length
@@ -58,7 +55,9 @@ function MiningApp() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white">
       <Header
-        wallet={wallet}
+        account={walletAccount}
+        isConnected={isConnected}
+        chainId={chainId}
         loading={walletLoading}
         switchingNetwork={switchingNetwork}
         isWrongNetwork={isWrongNetwork}
@@ -70,10 +69,10 @@ function MiningApp() {
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:seo-8 py-8">
-        {wallet.isConnected && isWrongNetwork && (
+        {isConnected && isWrongNetwork && (
           <div className="mb-4 flex items-center justify-between gap-4 rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
             <span>
-              Wallet is on chain {wallet.chainId}. Please switch to {expectedNetwork} (chain{' '}
+              Wallet is on chain {chainId}. Please switch to {expectedNetwork} (chain{' '}
               {expectedChainId}).
             </span>
             <button
@@ -86,7 +85,6 @@ function MiningApp() {
             </button>
           </div>
         )}
-        {/* Overview Stats - Hidden on Analytics tab */}
         {activeTab !== 'analytics' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatCard
@@ -118,7 +116,6 @@ function MiningApp() {
           </div>
         )}
 
-        {/* Main Content */}
         <div className="space-y-8">
           {activeTab === 'pools' && (
             <div>
@@ -138,7 +135,7 @@ function MiningApp() {
               <UserPortfolio
                 account={account}
                 loading={accountLoading}
-                connected={wallet.isConnected}
+                connected={isConnected}
               />
             </div>
           )}
@@ -146,8 +143,8 @@ function MiningApp() {
           {activeTab === 'stake' && (
             <div>
               <StakeRewards
-                account={wallet.account}
-                isConnected={wallet.isConnected}
+                account={walletAccount}
+                isConnected={isConnected}
               />
             </div>
           )}
@@ -167,7 +164,6 @@ function MiningApp() {
           )}
         </div>
 
-        {/* Footer Info */}
         <div className="mt-16 pt-8 border-t border-slate-700 text-center text-gray-400 text-sm">
           {health && (
             <p>

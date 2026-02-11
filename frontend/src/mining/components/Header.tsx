@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { WalletStatus } from '@/shared/components/WalletStatus';
 
 const TABS: { path: string; label: string }[] = [
   { path: '/mining/pools', label: 'Pools' },
@@ -10,11 +11,9 @@ const TABS: { path: string; label: string }[] = [
 ];
 
 type Props = {
-  wallet: {
-    account: string | null;
-    isConnected: boolean;
-    chainId: number | null;
-  };
+  account: string | null;
+  isConnected: boolean;
+  chainId: number | null;
   loading: boolean;
   switchingNetwork: boolean;
   isWrongNetwork: boolean;
@@ -26,7 +25,9 @@ type Props = {
 };
 
 export const Header: React.FC<Props> = ({
-  wallet,
+  account,
+  isConnected,
+  chainId,
   loading,
   switchingNetwork,
   isWrongNetwork,
@@ -36,16 +37,10 @@ export const Header: React.FC<Props> = ({
   onDisconnect,
   onSwitchNetwork,
 }) => {
-
-  const formatAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
-
   return (
     <header className="bg-gradient-to-b from-slate-800 to-slate-900 border-b border-slate-700 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
-          {/* Logo */}
           <NavLink to="/mining/pools" className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
               <span className="text-white font-bold">L</span>
@@ -55,7 +50,6 @@ export const Header: React.FC<Props> = ({
             </h1>
           </NavLink>
 
-          {/* Navigation */}
           <nav className="hidden md:flex gap-1">
             {TABS.map(({ path, label }) => (
               <NavLink
@@ -73,46 +67,24 @@ export const Header: React.FC<Props> = ({
             ))}
           </nav>
 
-          {/* Wallet Connection */}
-          <div>
-            {wallet.isConnected ? (
-              <div className="flex items-center gap-3">
-                <div className="hidden sm:block text-right">
-                  <p className="text-sm text-gray-400">
-                    Connected {wallet.chainId != null ? `(Chain ${wallet.chainId})` : ''}
-                  </p>
-                  <p className="text-sm font-semibold text-white">{formatAddress(wallet.account!)}</p>
-                </div>
-                {isWrongNetwork && (
-                  <button
-                    onClick={onSwitchNetwork}
-                    disabled={switchingNetwork}
-                    className="px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-medium transition-colors text-xs"
-                    title={`Switch to ${expectedNetwork} (${expectedChainId})`}
-                  >
-                    {switchingNetwork ? 'Switching...' : `Switch to ${expectedNetwork}`}
-                  </button>
-                )}
-                <button
-                  onClick={onDisconnect}
-                  className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium transition-colors"
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={onConnect}
-                disabled={loading}
-                className="px-6 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-medium transition-colors disabled:opacity-50"
-              >
-                {loading ? 'Connecting...' : 'Connect'}
-              </button>
-            )}
-          </div>
+          <WalletStatus
+            account={account}
+            isConnected={isConnected}
+            chainId={chainId}
+            isWrongNetwork={isWrongNetwork}
+            expectedNetwork={expectedNetwork}
+            expectedChainId={expectedChainId}
+            switchingNetwork={switchingNetwork}
+            loading={loading}
+            onConnect={onConnect}
+            onDisconnect={onDisconnect}
+            onSwitchNetwork={onSwitchNetwork}
+            connectClassName="px-6 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-medium transition-colors disabled:opacity-50"
+            disconnectClassName="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium transition-colors"
+            switchClassName="px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-medium transition-colors text-xs"
+          />
         </div>
 
-        {/* Mobile Navigation */}
         <div className="md:hidden flex gap-1 pb-4 overflow-x-auto">
           {TABS.map(({ path, label }) => (
             <NavLink
