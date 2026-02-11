@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Header } from './components/Header';
 import { MarketsTable } from './components/MarketsTable';
@@ -29,6 +29,8 @@ function LendingApp() {
   const [comptroller, setComptroller] = useState<string | null>(null);
   const [refetchError, setRefetchError] = useState<string | null>(null);
   const [needsManualRefresh, setNeedsManualRefresh] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const postTxRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     markets,
@@ -52,6 +54,15 @@ function LendingApp() {
 
   useEffect(() => {
     API.getContractAddresses().then((r) => setComptroller(r.comptroller ?? null)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (postTxRefreshTimerRef.current) {
+        clearTimeout(postTxRefreshTimerRef.current);
+        postTxRefreshTimerRef.current = null;
+      }
+    };
   }, []);
 
   // Refetch account when user switches to Positions tab so list is in sync with markets
@@ -94,21 +105,35 @@ function LendingApp() {
     if (market) openModal(market, 'repay', String(getPositionBalance(position, 'borrowBalance')));
   };
 
-  const refetch = async () => {
+  const refetch = useCallback(async () => {
     setRefetchError(null);
+    setRefreshing(true);
     try {
       await refetchMarkets();
       if (account) await refetchAccount();
       setNeedsManualRefresh(false);
+      return true;
     } catch (e) {
       setRefetchError(e instanceof Error ? e.message : 'Failed to refresh data');
+      setNeedsManualRefresh(true);
+      return false;
+    } finally {
+      setRefreshing(false);
     }
-  };
+  }, [account, refetchMarkets, refetchAccount]);
 
   const handleModalSuccess = async () => {
     setRefetchError(null);
-    setNeedsManualRefresh(true);
     if (action === 'supply' || action === 'borrow') navigate('/lending/positions');
+    setNeedsManualRefresh(true);
+    const refreshed = await refetch();
+    if (refreshed) {
+      if (postTxRefreshTimerRef.current) clearTimeout(postTxRefreshTimerRef.current);
+      postTxRefreshTimerRef.current = setTimeout(() => {
+        void refetch();
+        postTxRefreshTimerRef.current = null;
+      }, 2500);
+    }
   };
 
   // TVL = sum of each market's total supply in USD (backend sends totalSupplyUsd in plain USD)
@@ -162,13 +187,14 @@ function LendingApp() {
         )}
         {needsManualRefresh && !refetchError && (
           <div className="mb-4 flex items-center justify-between gap-4 rounded-xl border border-teal-700/50 bg-teal-950/30 px-4 py-3 text-teal-200 text-sm">
-            <span>Transaction submitted. Refresh when you want to fetch the latest balances and markets.</span>
+            <span>Updating balances automatically after your transaction. You can also refresh now.</span>
             <button
               type="button"
               onClick={refetch}
+              disabled={refreshing}
               className="shrink-0 rounded-lg bg-teal-600 px-3 py-1.5 font-medium text-white hover:bg-teal-500"
             >
-              Refresh now
+              {refreshing ? 'Refreshing...' : 'Refresh now'}
             </button>
           </div>
         )}
@@ -182,9 +208,10 @@ function LendingApp() {
             <button
               type="button"
               onClick={refetch}
+              disabled={refreshing}
               className="mt-2 text-xs text-zinc-500 underline hover:text-zinc-300"
             >
-              Refresh
+              {refreshing ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
           <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
@@ -214,7 +241,17 @@ function LendingApp() {
 
           {activeTab === 'positions' && (
             <section>
-              <h2 className="mb-4 text-xl font-semibold text-white">My Positions</h2>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-xl font-semibold text-white">My Positions</h2>
+                <button
+                  type="button"
+                  onClick={refetch}
+                  disabled={refreshing}
+                  className="rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {refreshing ? 'Refreshing...' : 'Refresh'}
+                </button>
+              </div>
               <UserPositions
                 account={accountData}
                 loading={accountLoading}
