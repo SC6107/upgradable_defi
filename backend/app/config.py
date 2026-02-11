@@ -6,9 +6,21 @@ from typing import Dict, List, Optional
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
+REPO_ROOT = PROJECT_ROOT.parent
 CONFIG_PATH = PROJECT_ROOT / "config" / "addresses.local.json"
-ABI_ROOT = PROJECT_ROOT.parent / "contracts" / "out"
-BROADCAST_ROOT = PROJECT_ROOT.parent / "contracts" / "broadcast"
+# Foundry default: out/ and broadcast/ at repo root (not contracts/out)
+def _resolve_path(env_value: Optional[str], default: Path) -> Path:
+    if not env_value:
+        return default
+    p = Path(env_value).expanduser()
+    if not p.is_absolute():
+        p = (REPO_ROOT / p).resolve()
+    return p
+
+_abi_root = os.getenv("ABI_ROOT")
+ABI_ROOT = _resolve_path(_abi_root, REPO_ROOT / "out")
+_broadcast_root = os.getenv("BROADCAST_ROOT")
+BROADCAST_ROOT = _resolve_path(_broadcast_root, REPO_ROOT / "broadcast")
 
 RPC_URL = os.getenv("RPC_URL", "http://127.0.0.1:8545")
 DB_PATH = os.getenv("DB_PATH", str(PROJECT_ROOT / "indexer.db"))
@@ -24,6 +36,8 @@ def _find_run_json_candidates() -> List[Path]:
     explicit = os.getenv("RUN_JSON")
     if explicit:
         path = Path(explicit).expanduser()
+        if not path.is_absolute():
+            path = (REPO_ROOT / path).resolve()
         return [path] if path.exists() else []
 
     candidates: List[Path] = []
@@ -96,12 +110,16 @@ def _extract_addresses_from_run_json(path: Path) -> Optional[Dict[str, object]]:
     price_oracles = addresses_for("PriceOracle")
     markets = addresses_for(MARKET_ABI_NAME)
     mining = addresses_for(LIQUIDITY_MINING_ABI_NAME)
+    governor = addresses_for("ProtocolGovernor")
+    timelock = addresses_for("ProtocolTimelock")
 
     return {
         "comptroller": comptrollers[0] if comptrollers else None,
         "markets": markets,
         "liquidityMining": mining,
         "priceOracle": price_oracles[0] if price_oracles else None,
+        "governor": governor[0] if governor else None,
+        "protocolTimelock": timelock[0] if timelock else None,
     }
 
 
@@ -122,6 +140,8 @@ def _load_addresses_file(path: Path) -> Optional[Dict[str, object]]:
         "markets": data.get("markets", []),
         "liquidityMining": data.get("liquidityMining", []),
         "priceOracle": data.get("priceOracle"),
+        "governor": data.get("governor"),
+        "protocolTimelock": data.get("protocolTimelock"),
     }
 
 

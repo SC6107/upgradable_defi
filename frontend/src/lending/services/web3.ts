@@ -22,6 +22,7 @@ const LENDING_TOKEN_ABI = [
   'function totalSupply() view returns (uint256)',
   'function totalBorrows() view returns (uint256)',
   'function getCash() view returns (uint256)',
+  'function liquidateBorrow(address borrower, uint256 repayAmount, address cTokenCollateral) external returns (uint256)',
 ];
 
 const ERC20_ABI = [
@@ -51,7 +52,7 @@ class LendingWeb3Service {
    */
   async connect(): Promise<string> {
     if (!window.ethereum) {
-      throw new Error('请安装 MetaMask 或其他兼容钱包');
+      throw new Error('Please install MetaMask or a compatible wallet');
     }
 
     this.provider = new ethers.BrowserProvider(window.ethereum);
@@ -83,11 +84,17 @@ class LendingWeb3Service {
   }
 
   /**
-   * Supply tokens to lending market
+   * Supply tokens to lending market.
+   * If comptrollerAddress is provided, calls enterMarkets([marketAddress]) after mint so the position counts as collateral (liquidity).
    */
-  async supply(marketAddress: string, amount: string, underlyingAddress: string): Promise<string> {
+  async supply(
+    marketAddress: string,
+    amount: string,
+    underlyingAddress: string,
+    comptrollerAddress?: string | null
+  ): Promise<string> {
     if (!this.signer) {
-      throw new Error('钱包未连接');
+      throw new Error('Wallet not connected');
     }
 
     // Approve underlying token
@@ -107,6 +114,11 @@ class LendingWeb3Service {
     const mintTx = await lendingContract.mint(amountWei);
     const receipt = await mintTx.wait();
 
+    // Enter market so this supply counts as collateral (Comptroller.getAccountLiquidity will then return non-zero)
+    if (comptrollerAddress) {
+      await this.enterMarkets(comptrollerAddress, [marketAddress]);
+    }
+
     return receipt.hash;
   }
 
@@ -115,7 +127,7 @@ class LendingWeb3Service {
    */
   async withdraw(marketAddress: string, amount: string, isUnderlying: boolean = true): Promise<string> {
     if (!this.signer) {
-      throw new Error('钱包未连接');
+      throw new Error('Wallet not connected');
     }
 
     const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
@@ -142,7 +154,7 @@ class LendingWeb3Service {
    */
   async borrow(marketAddress: string, amount: string): Promise<string> {
     if (!this.signer) {
-      throw new Error('钱包未连接');
+      throw new Error('Wallet not connected');
     }
 
     const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
@@ -162,7 +174,7 @@ class LendingWeb3Service {
    */
   async repay(marketAddress: string, amount: string, underlyingAddress: string): Promise<string> {
     if (!this.signer) {
-      throw new Error('钱包未连接');
+      throw new Error('Wallet not connected');
     }
 
     const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
@@ -189,7 +201,7 @@ class LendingWeb3Service {
    */
   async enterMarkets(comptrollerAddress: string, marketAddresses: string[]): Promise<string> {
     if (!this.signer) {
-      throw new Error('钱包未连接');
+      throw new Error('Wallet not connected');
     }
 
     const comptroller = new ethers.Contract(comptrollerAddress, COMPTROLLER_ABI, this.signer);
@@ -204,7 +216,7 @@ class LendingWeb3Service {
    */
   async exitMarket(comptrollerAddress: string, marketAddress: string): Promise<string> {
     if (!this.signer) {
-      throw new Error('钱包未连接');
+      throw new Error('Wallet not connected');
     }
 
     const comptroller = new ethers.Contract(comptrollerAddress, COMPTROLLER_ABI, this.signer);
@@ -219,7 +231,7 @@ class LendingWeb3Service {
    */
   async getUnderlyingBalance(underlyingAddress: string): Promise<string> {
     if (!this.signer || !this.account) {
-      throw new Error('钱包未连接');
+      throw new Error('Wallet not connected');
     }
 
     const contract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
@@ -234,7 +246,7 @@ class LendingWeb3Service {
    */
   async getLendingTokenBalance(marketAddress: string): Promise<string> {
     if (!this.signer || !this.account) {
-      throw new Error('钱包未连接');
+      throw new Error('Wallet not connected');
     }
 
     const contract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
@@ -242,6 +254,41 @@ class LendingWeb3Service {
     const decimals = await contract.decimals();
 
     return ethers.formatUnits(balance, decimals);
+  }
+
+  /**
+   * Liquidate an underwater borrower: repay their debt and receive collateral.
+   * @param repayCTokenAddress The cToken market to repay (e.g. dUSDC)
+   * @param borrower The underwater borrower address
+   * @param repayAmount Amount of underlying to repay (in human units)
+   * @param collateralCTokenAddress The cToken to seize as collateral (e.g. dWETH)
+   */
+  async liquidateBorrow(
+    repayCTokenAddress: string,
+    borrower: string,
+    repayAmount: string,
+    collateralCTokenAddress: string,
+    underlyingAddress: string
+  ): Promise<string> {
+    if (!this.signer || !this.account) {
+      throw new Error('Wallet not connected');
+    }
+
+    const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
+    const decimals = await underlyingContract.decimals();
+    const amountWei = ethers.parseUnits(repayAmount, decimals);
+
+    const allowance = await underlyingContract.allowance(this.account, repayCTokenAddress);
+    if (allowance < amountWei) {
+      const approveTx = await underlyingContract.approve(repayCTokenAddress, ethers.MaxUint256);
+      await approveTx.wait();
+    }
+
+    const repayContract = new ethers.Contract(repayCTokenAddress, LENDING_TOKEN_ABI, this.signer);
+    const tx = await repayContract.liquidateBorrow(borrower, amountWei, collateralCTokenAddress);
+    const receipt = await tx.wait();
+
+    return receipt!.hash;
   }
 }
 

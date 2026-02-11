@@ -159,3 +159,32 @@ On-chain actions completed.
   - `LIQUIDITY_MINING_ABI_NAME`（默认 `LiquidityMining`）
   - `AUTO_DISCOVER_ADDRESSES`（默认 `1`，设为 `0` 可关闭自动发现）
   - `RUN_JSON`（可显式指定 broadcast run json 路径）
+
+## Position 无数据排查（合约侧无问题时的检查项）
+
+合约中 `balanceOf`（供应）和 `borrowBalanceStored`（借款）逻辑正确；若接口 `GET /accounts/{address}` 返回的 position 全为 0 或前端显示「暂无头寸」，请按下面排查：
+
+1. **链与 RPC 一致**  
+   后端读的是 `RPC_URL`（默认本机 8545）。若 MetaMask 连的是别的网络（如主网、其他测试网），你在前端 Supply 会写到你连的那条链，而后端读的是 8545 那条链，自然读不到头寸。  
+   - 确认：MetaMask 网络与后端一致（如本地 31337），或把后端 `RPC_URL` 指到同一链。
+
+2. **合约地址一致**  
+   后端用 `config/addresses.local.json` 或 broadcast 的 `run-latest.json` 里的 **markets** 列表去调每个 LendingToken 的 `balanceOf(addr)`。若你部署过新合约但没更新后端配置，后端仍在读旧地址，会得到 0。  
+   - 确认：`GET /contracts/addresses` 返回的 `markets` / `marketDetails` 与当前前端实际调用的 LendingToken 地址一致（可与部署脚本或 broadcast 输出对比）。
+
+3. **markets 非空**  
+   若配置里 `markets: []` 或自动发现没拿到任何 LendingToken，`get_account` 会返回 `positions: []`，前端就会显示「暂无头寸」。  
+   - 确认：`GET /contracts/addresses` 里 `markets` 至少有 1 个地址；必要时补全 `addresses.local.json` 或检查 broadcast 中 LendingToken 代理地址是否被正确解析。
+
+4. **确实有过 Supply 且成功**  
+   供应会调用 LendingToken 的 `mint()`，链上会增加该地址的 cToken `balanceOf`。若交易失败、未上链或只 approve 未 mint，链上余额为 0。  
+   - 确认：在区块浏览器或 cast 查该地址在对应 LendingToken 上的 `balanceOf` 是否 > 0。
+
+5. **请求的地址与钱包一致**  
+   前端用当前连接的钱包地址请求 `GET /accounts/{address}`。若曾切换账户或复制错地址，会查到别人或空地址。  
+   - 确认：F12 看请求 URL 里的 address 是否为当前 MetaMask 账户（checksum 格式无妨，后端会统一）。
+
+**快速验证**（本机）：  
+- `GET /health` 看 `chainId` 与 MetaMask 是否一致。  
+- `GET /contracts/addresses` 看 `markets` 是否有地址且与部署一致。  
+- `GET /accounts/<你的钱包地址>` 看返回的 `positions` 条数是否等于 markets 数量，以及对应市场的 `supplyUnderlying` / `borrowBalance` 是否仍为 0。
