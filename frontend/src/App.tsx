@@ -4,9 +4,9 @@ import LendingApp from './lending/App';
 
 const appSwitcherBase = {
   position: 'fixed' as const,
-  top: '90px',
-  right: '20px',
-  zIndex: 10000,
+  top: '10px',
+  left: '20px',
+  zIndex: 60,
   background: '#0f172a',
   borderRadius: '12px',
   boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
