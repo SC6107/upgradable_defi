@@ -16,6 +16,12 @@ export ABI_ROOT=/Users/liuruyan/Desktop/course/6107/upgradable_defi/contracts/ou
 uvicorn app.main:app --reload
 ```
 
+## Vercel 部署
+
+已支持 Vercel Serverless 运行模式。完整步骤见仓库根目录：
+
+- `DEPLOY_GUIDE.md`
+
 ## 配置
 地址文件：`config/addresses.local.json`
 ```json

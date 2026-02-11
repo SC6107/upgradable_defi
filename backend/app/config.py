@@ -11,6 +11,22 @@ CONFIG_PATH = PROJECT_ROOT / "config" / "addresses.local.json"
 ENV_PATH = REPO_ROOT / ".env"
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"", "0", "false", "no", "off"}
+
+
+def _resolve_repo_path(value: Optional[str], default: Path) -> Path:
+    if not value:
+        return default.resolve()
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        candidate = (REPO_ROOT / candidate).resolve()
+    return candidate
+
+
 def _load_env_file(path: Path) -> None:
     if not path.exists():
         return
@@ -29,8 +45,12 @@ def _load_env_file(path: Path) -> None:
 
 _load_env_file(ENV_PATH)
 
-ABI_ROOT = (REPO_ROOT / "contracts" / "out").resolve()
-BROADCAST_ROOT = (REPO_ROOT / "contracts" / "broadcast").resolve()
+VERCEL = _env_bool("VERCEL", False)
+
+ABI_ROOT = _resolve_repo_path(os.getenv("ABI_ROOT"), REPO_ROOT / "contracts" / "out")
+BROADCAST_ROOT = _resolve_repo_path(
+    os.getenv("BROADCAST_ROOT"), REPO_ROOT / "contracts" / "broadcast"
+)
 
 NETWORK = os.getenv("NETWORK", "sepolia").strip().lower()
 NETWORK_CHAIN_IDS = {
@@ -60,9 +80,14 @@ else:
         BROADCAST_ROOT / "FullSetupLocal.s.sol" / DEPLOY_CHAIN_ID / "run-latest.json"
     ).resolve()
 
-DB_PATH = os.getenv("DB_PATH", str(PROJECT_ROOT / "indexer.db"))
+DEFAULT_DB_PATH = "/tmp/indexer.db" if VERCEL else str(PROJECT_ROOT / "indexer.db")
+DB_PATH = os.getenv("DB_PATH", DEFAULT_DB_PATH)
 POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "5"))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "1000"))
+ENABLE_INDEXER = _env_bool("ENABLE_INDEXER", not VERCEL)
+ALLOWED_ORIGINS = [
+    origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",") if origin.strip()
+]
 
 MARKET_ABI_NAME = os.getenv("MARKET_ABI_NAME", "LendingToken")
 COMPTROLLER_ABI_NAME = os.getenv("COMPTROLLER_ABI_NAME", "Comptroller")

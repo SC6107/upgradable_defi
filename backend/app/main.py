@@ -4,12 +4,13 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from web3 import Web3
 
 logger = logging.getLogger("uvicorn.error")
 
 from .chain import ChainReader
-from .config import DB_PATH, RPC_URL, load_addresses
+from .config import ALLOWED_ORIGINS, DB_PATH, ENABLE_INDEXER, RPC_URL, load_addresses
 from .db import Database
 from .indexer import Indexer
 
@@ -30,13 +31,24 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 db = Database(DB_PATH)
+allow_all_origins = ALLOWED_ORIGINS == ["*"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS or ["*"],
+    allow_credentials=not allow_all_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
 async def startup() -> None:
     db.init_schema()
-    app.state.indexer = Indexer(db)
-    app.state.indexer_task = asyncio.create_task(app.state.indexer.run())
+    app.state.indexer = None
+    app.state.indexer_task = None
+    if ENABLE_INDEXER:
+        app.state.indexer = Indexer(db)
+        app.state.indexer_task = asyncio.create_task(app.state.indexer.run())
     app.state.chain = ChainReader()
     logger.info("Swagger UI available at http://127.0.0.1:8000/docs")
     logger.info("ReDoc available at http://127.0.0.1:8000/redoc")

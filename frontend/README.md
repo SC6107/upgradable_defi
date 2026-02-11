@@ -88,6 +88,12 @@ npm run lint
 npm run type-check
 ```
 
+## Vercel deployment
+
+For Vercel deployment steps (frontend + backend), see:
+
+- `../DEPLOY_GUIDE.md`
+
 ## Project structure (high level)
 
 - `src/lending/*` Lending UI, hooks, and services
@@ -95,4 +101,3 @@ npm run type-check
 - `src/config/network.ts` target chain config + wallet network switching
 - `src/ProtocolUpgradeInfo.tsx` upgradeability metadata panel
 - `vite.config.ts` env resolution and API proxy behavior
-
