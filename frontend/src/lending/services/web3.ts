@@ -34,6 +34,29 @@ const COMPTROLLER_ABI = [
 ];
 
 class LendingWeb3Service extends Web3Base {
+  private formatComptrollerErrorCode(code: number): string {
+    const labels: Record<number, string> = {
+      0: 'NO_ERROR',
+      1: 'UNAUTHORIZED',
+      2: 'COMPTROLLER_MISMATCH',
+      3: 'INSUFFICIENT_SHORTFALL',
+      4: 'INSUFFICIENT_LIQUIDITY',
+      5: 'INVALID_CLOSE_FACTOR',
+      6: 'INVALID_COLLATERAL_FACTOR',
+      7: 'INVALID_LIQUIDATION_INCENTIVE',
+      8: 'MARKET_NOT_ENTERED',
+      9: 'MARKET_NOT_LISTED',
+      10: 'MARKET_ALREADY_LISTED',
+      11: 'MATH_ERROR',
+      12: 'NONZERO_BORROW_BALANCE',
+      13: 'PRICE_ERROR',
+      14: 'REJECTION',
+      15: 'TOO_MANY_ASSETS',
+      16: 'TOO_MUCH_REPAY',
+    };
+    return labels[code] ?? `UNKNOWN_${code}`;
+  }
+
   async supply(
     marketAddress: string,
     amount: string,
@@ -150,6 +173,21 @@ class LendingWeb3Service extends Web3Base {
       await this.assertContractExists(comptrollerAddress, 'Comptroller');
 
       const comptroller = new ethers.Contract(comptrollerAddress, COMPTROLLER_ABI, this.signer);
+      const dryRunResult: bigint[] = await comptroller.enterMarkets.staticCall(marketAddresses);
+      const failures = dryRunResult
+        .map((code, index) => ({ code: Number(code), index }))
+        .filter((item) => item.code !== 0);
+
+      if (failures.length > 0) {
+        const details = failures
+          .map(
+            ({ code, index }) =>
+              `${this.formatComptrollerErrorCode(code)} for market ${marketAddresses[index] ?? 'unknown'}`
+          )
+          .join('; ');
+        throw new Error(`Unable to enable collateral: ${details}`);
+      }
+
       const tx = await comptroller.enterMarkets(marketAddresses);
       const receipt = await tx.wait();
 

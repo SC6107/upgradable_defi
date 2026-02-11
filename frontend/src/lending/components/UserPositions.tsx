@@ -8,6 +8,7 @@ type Props = {
   loading: boolean;
   connected: boolean;
   markets?: LendingMarket[];
+  onBorrow: (m: LendingMarket) => void;
   onWithdraw: (p: UserPosition) => void;
   onRepay: (p: UserPosition) => void;
   comptrollerAddress?: string | null;
@@ -37,6 +38,10 @@ function PositionTable({
   onAction,
   actionLabel,
   actionClass,
+  onSecondaryAction,
+  secondaryActionLabel,
+  secondaryActionClass,
+  isSecondaryActionDisabled,
   valueKey,
   apyKey,
 }: {
@@ -47,6 +52,10 @@ function PositionTable({
   onAction: (p: UserPosition) => void;
   actionLabel: string;
   actionClass: string;
+  onSecondaryAction?: (p: UserPosition) => void;
+  secondaryActionLabel?: string;
+  secondaryActionClass?: string;
+  isSecondaryActionDisabled?: (p: UserPosition) => boolean;
   valueKey: 'supplyUnderlying' | 'borrowBalance';
   apyKey: 'supplyRatePerYear' | 'borrowRatePerYear';
 }) {
@@ -70,7 +79,7 @@ function PositionTable({
               {type === 'supply' && (
                 <th className="px-4 py-3 text-right font-medium">Collateral</th>
               )}
-              <th className="px-4 py-3 text-right font-medium w-24">Action</th>
+              <th className={`px-4 py-3 text-right font-medium ${onSecondaryAction ? 'w-44' : 'w-24'}`}>Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-700/60">
@@ -99,13 +108,25 @@ function PositionTable({
                     </td>
                   )}
                   <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onAction(p)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${actionClass}`}
-                    >
-                      {actionLabel}
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      {onSecondaryAction && secondaryActionLabel && (
+                        <button
+                          type="button"
+                          onClick={() => onSecondaryAction(p)}
+                          disabled={Boolean(isSecondaryActionDisabled?.(p))}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${secondaryActionClass ?? ''}`}
+                        >
+                          {secondaryActionLabel}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onAction(p)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${actionClass}`}
+                      >
+                        {actionLabel}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -122,12 +143,15 @@ export function UserPositions({
   loading,
   connected,
   markets = [],
+  onBorrow,
   onWithdraw,
   onRepay,
   comptrollerAddress,
   onRefetch,
 }: Props) {
   const [entering, setEntering] = useState(false);
+  const [enterMarketsError, setEnterMarketsError] = useState<string | null>(null);
+  const [enterMarketsSuccess, setEnterMarketsSuccess] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refetch when user lands on positions tab, and poll once more after delay so balance/value/APY are fresh
@@ -145,12 +169,24 @@ export function UserPositions({
 
   const handleEnterMarkets = async () => {
     if (!comptrollerAddress || !account || !onRefetch) return;
-    const markets = account.positions.filter((p) => getPositionBalance(p, 'supplyUnderlying') > 0).map((p) => p.market);
+    const markets = account.positions
+      .filter((p) => getPositionBalance(p, 'supplyUnderlying') > 0)
+      .map((p) => p.market)
+      .filter((m): m is string => typeof m === 'string' && m.length > 0);
     if (markets.length === 0) return;
+    setEnterMarketsError(null);
+    setEnterMarketsSuccess(null);
     setEntering(true);
     try {
-      await Web3Service.enterMarkets(comptrollerAddress, markets);
-      await onRefetch();
+      const txHash = await Web3Service.enterMarkets(comptrollerAddress, markets);
+      setEnterMarketsSuccess(`Collateral enabled. Tx: ${txHash.slice(0, 10)}...`);
+      try {
+        await onRefetch();
+      } catch {
+        // Do not override success state when post-tx refresh fails.
+      }
+    } catch (err) {
+      setEnterMarketsError(err instanceof Error ? err.message : 'Failed to enable collateral');
     } finally {
       setEntering(false);
     }
@@ -184,9 +220,14 @@ export function UserPositions({
   const supplyPositions = account.positions.filter((p) => getPositionBalance(p, 'supplyUnderlying') > 0);
   const borrowPositions = account.positions.filter((p) => getPositionBalance(p, 'borrowBalance') > 0);
   const liquidityUsd = account.liquidityUsd ?? account.liquidity;
+  const availableToBorrow = account.availableToBorrow ?? 0;
   const summary = buildSummary(account.positions, liquidityUsd);
-  // Always show when user has supply; enterMarkets is idempotent (no-op if already entered)
-  const showEnterMarkets = supplyPositions.length > 0 && Boolean(comptrollerAddress) && Boolean(onRefetch);
+  const hasLiquidity = typeof liquidityUsd === 'number' && Number.isFinite(liquidityUsd) && liquidityUsd > 0;
+  const showEnterMarkets = supplyPositions.length > 0 && Boolean(comptrollerAddress) && Boolean(onRefetch) && !hasLiquidity;
+  const handleBorrowFromSupplyPosition = (position: UserPosition) => {
+    const market = markets.find((m) => m.market?.toLowerCase() === position.market?.toLowerCase());
+    if (market) onBorrow(market);
+  };
 
   return (
     <div className="space-y-6">
@@ -218,16 +259,28 @@ export function UserPositions({
       </div>
 
       {showEnterMarkets && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
-          <span>Supply is not used as collateral yet. Enable it to borrow and show your limit.</span>
-          <button
-            type="button"
-            onClick={handleEnterMarkets}
-            disabled={entering}
-            className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 font-medium text-white hover:bg-amber-500 disabled:opacity-50"
-          >
-            {entering ? 'Processing...' : 'Enable as Collateral'}
-          </button>
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
+            <span>Supply is not used as collateral yet. Enable it to borrow and show your limit.</span>
+            <button
+              type="button"
+              onClick={handleEnterMarkets}
+              disabled={entering}
+              className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+            >
+              {entering ? 'Processing...' : 'Enable as Collateral'}
+            </button>
+          </div>
+          {enterMarketsError && (
+            <div className="rounded-lg border border-red-700/40 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+              {enterMarketsError}
+            </div>
+          )}
+          {enterMarketsSuccess && (
+            <div className="rounded-lg border border-emerald-700/40 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+              {enterMarketsSuccess}
+            </div>
+          )}
         </div>
       )}
 
@@ -242,6 +295,10 @@ export function UserPositions({
           onAction={onWithdraw}
           actionLabel="Withdraw"
           actionClass="bg-red-600/90 hover:bg-red-500 text-white"
+          onSecondaryAction={handleBorrowFromSupplyPosition}
+          secondaryActionLabel="Borrow"
+          secondaryActionClass="bg-amber-600/90 hover:bg-amber-500 text-white"
+          isSecondaryActionDisabled={() => availableToBorrow <= 0}
         />
       )}
 

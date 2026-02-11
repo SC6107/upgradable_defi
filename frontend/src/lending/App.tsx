@@ -220,6 +220,7 @@ function LendingApp() {
                 loading={accountLoading}
                 connected={isConnected}
                 markets={markets}
+                onBorrow={handleBorrow}
                 onWithdraw={handleWithdraw}
                 onRepay={handleRepay}
                 comptrollerAddress={comptroller}
