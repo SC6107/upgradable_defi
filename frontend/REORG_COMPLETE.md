@@ -29,10 +29,9 @@ src/
 
 ## Files Reorganized
 
-### Moved to `mining/components/` (8 files)
+### Moved to `mining/components/` (7 files)
 - ✅ Header.tsx
 - ✅ PoolsTable.tsx
-- ✅ UserPortfolio.tsx
 - ✅ Transactions.tsx
 - ✅ AnalyticsDashboard.tsx
 - ✅ StatCard.tsx
@@ -128,7 +127,6 @@ The mining module contains all existing functionality:
 
 ### Features
 - ✅ Liquidity pools display
-- ✅ User portfolio management
 - ✅ Transaction history
 - ✅ Market analytics
 - ✅ Wallet integration (MetaMask)
@@ -138,7 +136,6 @@ The mining module contains all existing functionality:
 
 ### Pages/Tabs
 - **Pools**: View and manage liquidity pools
-- **Portfolio**: View your positions and balances
 - **Transactions**: View transaction history
 - **Analytics**: Market statistics and charts
 

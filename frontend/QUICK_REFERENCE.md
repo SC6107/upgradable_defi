@@ -15,10 +15,9 @@ src/
 
 ## Files Moved to `mining/`
 
-### Components (8 files)
+### Components (7 files)
 - Header.tsx
 - PoolsTable.tsx
-- UserPortfolio.tsx
 - Transactions.tsx
 - AnalyticsDashboard.tsx
 - StatCard.tsx
@@ -88,14 +87,12 @@ import { util } from '@/utils/util';
 
 **Features:**
 - Liquidity pools with supply/borrow
-- User portfolio tracking
 - Transaction history
 - Market analytics
 - Wallet integration (MetaMask)
 
 **Tabs:**
 - Pools: View and manage liquidity pools
-- Portfolio: View your positions
 - Transactions: Transaction history
 - Analytics: Market statistics
 

@@ -8,7 +8,7 @@
 负责导航和钱包连接。
 
 **属性:**
-- `activeTab`: 当前活动标签 ('pools' | 'portfolio' | 'transactions' | 'analytics')
+- `activeTab`: 当前活动标签 ('pools' | 'stake' | 'transactions' | 'analytics')
 - `setActiveTab`: 标签切换回调
 
 **功能:**
@@ -38,25 +38,6 @@ import { Header } from '@/components/Header';
 import { PoolsTable } from '@/components/PoolsTable';
 
 <PoolsTable markets={markets} loading={loading} />
-```
-
-#### UserPortfolio
-显示用户的投资组合。
-
-**属性:**
-- `account`: Account | null - 账户数据
-- `loading`: boolean - 加载状态
-- `connected`: boolean - 钱包连接状态
-
-**功能:**
-- 显示账户流动性
-- 列出用户头寸
-- 风险指标
-
-```tsx
-import { UserPortfolio } from '@/components/UserPortfolio';
-
-<UserPortfolio account={account} loading={loading} connected={walletConnected} />
 ```
 
 #### Transactions

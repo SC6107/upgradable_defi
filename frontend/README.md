@@ -5,7 +5,6 @@ A modern, responsive frontend for interacting with the liquidity mining DeFi pro
 ## Features
 
 - **Pool Management**: View and analyze liquidity mining pools with real-time metrics
-- **Portfolio Tracking**: Monitor your supplied assets, borrowing positions, and account health
 - **Transaction History**: Track all protocol interactions and events
 - **Wallet Integration**: Connect MetaMask or other Web3 wallets
 - **Real-time Data**: Live updates of TVL, APR, and utilization rates
@@ -25,7 +24,6 @@ src/
 ├── components/          # Reusable React components
 │   ├── Header.tsx      # Navigation header with wallet connection
 │   ├── PoolsTable.tsx  # Main pools list and metrics
-│   ├── UserPortfolio.tsx # User's positions and account info
 │   ├── Transactions.tsx # Transaction history
 │   └── StatCard.tsx    # Data display cards
 ├── hooks/              # React custom hooks
@@ -95,13 +93,6 @@ Displays all available liquidity pools with sortable columns:
 - Current asset price
 - Action buttons
 
-### UserPortfolio
-Shows user's account information when connected:
-- Account liquidity and health status
-- List of supplied and borrowed assets
-- Position values in USD
-- Collateral factors
-
 ### Transactions
 Historical view of all user interactions:
 - Event type (Deposit, Withdraw, Borrow, Repay)
@@ -131,7 +122,6 @@ Requires MetaMask or compatible Web3 wallet for full functionality.
 - [ ] Approve token spending flow
 - [ ] Historical performance charts
 - [ ] Advanced trading pairs
-- [ ] Portfolio performance analytics
 - [ ] Mobile app optimization
 - [ ] Dark/Light theme toggle
 - [ ] Multiple wallet support (Ledger, Trezor, etc.)

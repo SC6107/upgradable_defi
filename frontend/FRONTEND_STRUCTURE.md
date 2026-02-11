@@ -17,7 +17,6 @@ frontend/src/
 │   ├── components/            # Mining-specific components
 │   │   ├── Header.tsx        # Navigation header
 │   │   ├── PoolsTable.tsx    # Liquidity pools table
-│   │   ├── UserPortfolio.tsx  # User portfolio view
 │   │   ├── Transactions.tsx   # Transaction history
 │   │   ├── AnalyticsDashboard.tsx  # Market analytics
 │   │   ├── StatCard.tsx      # Statistics card component
@@ -197,7 +196,6 @@ import { formatNumber } from '@/utils/format';
 
 **Features:**
 - Liquidity pools display
-- User portfolio management
 - Transaction history
 - Market analytics
 - Wallet integration
@@ -206,7 +204,6 @@ import { formatNumber } from '@/utils/format';
 **Components:**
 - Header: Navigation with tabs
 - PoolsTable: Interactive pools table
-- UserPortfolio: User's positions
 - Transactions: Transaction history list
 - AnalyticsDashboard: Market statistics and charts
 - StatCard: Statistic display card
