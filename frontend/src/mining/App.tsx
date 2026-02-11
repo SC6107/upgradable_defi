@@ -2,7 +2,6 @@ import { useLocation } from 'react-router-dom';
 import { Header } from './components/Header';
 import { PoolsTable } from './components/PoolsTable';
 import { StakeRewards } from './components/StakeRewards';
-import { ProtocolUpgradeInfo } from '../ProtocolUpgradeInfo';
 import { UserPortfolio } from './components/UserPortfolio';
 import { Transactions } from './components/Transactions';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
@@ -177,7 +176,6 @@ function MiningApp() {
             </p>
           )}
         </div>
-        <ProtocolUpgradeInfo />
       </main>
     </div>
   );

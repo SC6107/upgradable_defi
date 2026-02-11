@@ -4,7 +4,6 @@ import { Header } from './components/Header';
 import { MarketsTable } from './components/MarketsTable';
 import { UserPositions } from './components/UserPositions';
 import { ActionModal } from './components/ActionModal';
-import { ProtocolUpgradeInfo } from '../ProtocolUpgradeInfo';
 import { useMarkets, useAccount, useWallet } from './hooks/useLending';
 import API from './services/api';
 import type { LendingMarket, LendingAction, UserPosition } from './types';
@@ -233,10 +232,6 @@ function LendingApp() {
             </section>
           )}
 
-        </div>
-
-        <div className="mt-10">
-          <ProtocolUpgradeInfo />
         </div>
       </main>
 

@@ -31,9 +31,7 @@ export const useMarkets = () => {
     }, []);
     useEffect(() => {
         fetchMarkets();
-        // Refresh every 30 seconds
-        const interval = setInterval(fetchMarkets, 30000);
-        return () => clearInterval(interval);
+        return undefined;
     }, [fetchMarkets]);
     return { markets, loading, error, refetch: fetchMarkets };
 };
