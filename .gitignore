@@ -1,5 +1,5 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
+settings.local.json
 # dependencies
 /node_modules
 /.pnp
@@ -40,3 +40,9 @@ backend/indexer.db
 backend/*.db
 backend/.env
 backend/**/__pycache__/
+
+# local foundry/dependency artifacts
+broadcast/
+cache/
+lib/
+tash pop

@@ -23,12 +23,18 @@ def main():
     print("GET /health")
     print(json.dumps(get("/health"), indent=2))
 
+    print("\nGET /contracts/addresses?refresh=true")
+    print(json.dumps(get("/contracts/addresses", {"refresh": "true"}), indent=2))
+
     print("\nGET /markets")
     markets = get("/markets")
     print(json.dumps(markets, indent=2))
 
     print("\nGET /markets/summary")
     print(json.dumps(get("/markets/summary"), indent=2))
+
+    print(f"\nGET /accounts/{account}")
+    print(json.dumps(get(f"/accounts/{account}"), indent=2))
 
     print("\nGET /account/overview")
     print(json.dumps(get("/account/overview", {"account": account}), indent=2))
@@ -38,6 +44,9 @@ def main():
 
     print("\nGET /liquidity-mining")
     print(json.dumps(get("/liquidity-mining"), indent=2))
+
+    print(f"\nGET /liquidity-mining/{account}")
+    print(json.dumps(get(f"/liquidity-mining/{account}"), indent=2))
 
 
 if __name__ == "__main__":
