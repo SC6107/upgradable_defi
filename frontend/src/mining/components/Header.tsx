@@ -6,8 +6,6 @@ const TABS: { path: string; label: string }[] = [
   { path: '/mining/pools', label: 'Pools' },
   { path: '/mining/portfolio', label: 'Portfolio' },
   { path: '/mining/stake', label: '⛏️ Stake GOV' },
-  { path: '/mining/transactions', label: 'Transactions' },
-  { path: '/mining/analytics', label: '📊 Analytics' },
 ];
 
 type Props = {
