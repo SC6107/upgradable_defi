@@ -3,6 +3,7 @@ import type { LendingMarket, LendingAction } from '../types';
 import Web3Service from '../services/web3';
 import API from '../services/api';
 import { formatPct } from '../utils';
+import { TARGET_NETWORK } from '@/config/network';
 
 type Props = {
   isOpen: boolean;
@@ -105,6 +106,9 @@ export function ActionModal({
     repay: 'bg-teal-600 hover:bg-teal-500',
   }[action];
 
+  const explorerTxUrl =
+    txHash && TARGET_NETWORK.explorerUrl ? `${TARGET_NETWORK.explorerUrl}/tx/${txHash}` : null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-md rounded-xl border border-zinc-700/80 bg-zinc-900 p-6 shadow-xl">
@@ -132,7 +136,19 @@ export function ActionModal({
               </svg>
             </div>
             <p className="font-medium text-white">Transaction successful</p>
-            <p className="mt-1 text-xs text-zinc-500 font-mono">{txHash.slice(0, 10)}...{txHash.slice(-8)}</p>
+            {explorerTxUrl ? (
+              <a
+                href={explorerTxUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-xs font-mono text-teal-400 hover:text-teal-300"
+              >
+                {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                <span aria-hidden>↗</span>
+              </a>
+            ) : (
+              <p className="mt-1 text-xs text-zinc-500 font-mono">{txHash.slice(0, 10)}...{txHash.slice(-8)}</p>
+            )}
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
