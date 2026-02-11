@@ -3,8 +3,6 @@ import { NavLink } from 'react-router-dom';
 import { WalletStatus } from '@/shared/components/WalletStatus';
 
 const TABS: { path: string; label: string }[] = [
-  { path: '/mining/pools', label: 'Pools' },
-  { path: '/mining/portfolio', label: 'Portfolio' },
   { path: '/mining/stake', label: '⛏️ Stake GOV' },
 ];
 
@@ -39,7 +37,7 @@ export const Header: React.FC<Props> = ({
     <header className="bg-gradient-to-b from-slate-800 to-slate-900 border-b border-slate-700 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
-          <NavLink to="/mining/pools" className="flex items-center gap-3">
+          <NavLink to="/mining/stake" className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
               <span className="text-white font-bold">L</span>
             </div>
@@ -53,7 +51,7 @@ export const Header: React.FC<Props> = ({
               <NavLink
                 key={path}
                 to={path}
-                end={path === '/mining/pools'}
+                end
                 className={({ isActive }) =>
                   `px-4 py-2 rounded-lg font-medium transition-colors ${
                     isActive ? 'text-white bg-slate-700' : 'text-gray-400 hover:text-white hover:bg-slate-800'
@@ -88,7 +86,7 @@ export const Header: React.FC<Props> = ({
             <NavLink
               key={path}
               to={path}
-              end={path === '/mining/pools'}
+              end
               className={({ isActive }) =>
                 `px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
                   isActive ? 'text-white bg-slate-700' : 'text-gray-400 hover:text-white hover:bg-slate-800'

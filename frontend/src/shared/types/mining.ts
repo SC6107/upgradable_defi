@@ -107,7 +107,21 @@ export interface LiquidityMiningAccountPosition {
   mining: string;
   stakingToken: string | null;
   stakingSymbol: string | null;
+  stakingDecimals?: number | null;
+  rewardsToken?: string | null;
   stakedBalance: number | null;
   earned: number | null;
   rewardsSymbol: string | null;
+  rewardsDecimals?: number | null;
+  apr?: number | null;
+  apy?: number | null;
+}
+
+export interface LiquidityMiningAccountSummary {
+  account: string;
+  govToken: string | null;
+  govSymbol: string | null;
+  govDecimals: number | null;
+  govBalance: number | null;
+  positions: LiquidityMiningAccountPosition[];
 }

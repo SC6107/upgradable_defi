@@ -41,14 +41,50 @@ const LIQUIDITY_MINING_ABI = [
   'function decimals() view returns (uint8)',
 ];
 
+export interface SupplyAndStakeResult {
+  supplyTxHash: string;
+  stakeTxHash: string;
+  stakedAmount: string;
+}
+
 class MiningWeb3Service extends Web3Base {
+  private async getTokenDecimals(tokenAddress: string): Promise<number> {
+    await this.assertContractExists(tokenAddress, 'Token');
+
+    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
+    const decimals = await tokenContract.decimals();
+    return Number(decimals);
+  }
+
+  private async parseTokenAmount(
+    tokenAddress: string,
+    amount: string,
+    label: string
+  ): Promise<{ amountBN: bigint; decimals: number }> {
+    const value = amount.trim();
+    if (!value) {
+      throw new Error(`${label} amount is required`);
+    }
+
+    const decimals = await this.getTokenDecimals(tokenAddress);
+    let amountBN: bigint;
+    try {
+      amountBN = ethers.parseUnits(value, decimals);
+    } catch {
+      throw new Error(`Invalid ${label} amount`);
+    }
+
+    if (amountBN <= 0n) {
+      throw new Error(`${label} amount must be greater than 0`);
+    }
+
+    return { amountBN, decimals };
+  }
+
   async supply(marketAddress: string, amount: string, underlyingAddress: string): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
-    const underlyingContractProvider = new ethers.Contract(underlyingAddress, ERC20_ABI, this.provider);
-    const decimals = await underlyingContractProvider.decimals();
-
-    const amountBN = ethers.parseUnits(amount, decimals);
+    const { amountBN, decimals } = await this.parseTokenAmount(underlyingAddress, amount, 'Supply');
     const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
     const marketContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
 
@@ -63,6 +99,67 @@ class MiningWeb3Service extends Web3Base {
     await tx.wait();
 
     return tx.hash;
+  }
+
+  async supplyAndStake(
+    miningAddress: string,
+    marketAddress: string,
+    underlyingAddress: string,
+    amount: string
+  ): Promise<SupplyAndStakeResult> {
+    if (!this.signer || !this.account || !this.provider) throw new Error('Wallet not connected');
+
+    await this.assertContractExists(miningAddress, 'Liquidity mining');
+    await this.assertContractExists(marketAddress, 'Market');
+    await this.assertContractExists(underlyingAddress, 'Underlying token');
+
+    const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
+    const stakingToken: string = await miningContract.stakingToken();
+    if (stakingToken.toLowerCase() !== marketAddress.toLowerCase()) {
+      throw new Error('Selected market does not match this mining pool staking token');
+    }
+
+    const { amountBN, decimals: underlyingDecimals } = await this.parseTokenAmount(
+      underlyingAddress,
+      amount,
+      'Supply'
+    );
+    const stakingDecimals = await this.getTokenDecimals(stakingToken);
+
+    const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
+    const marketContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
+    const stakingContract = new ethers.Contract(stakingToken, ERC20_ABI, this.provider);
+
+    const underlyingBalance = await underlyingContract.balanceOf(this.account);
+    if (underlyingBalance < amountBN) {
+      throw new Error(
+        `Insufficient balance. You have ${ethers.formatUnits(underlyingBalance, underlyingDecimals)} tokens`
+      );
+    }
+
+    const stakingBalanceBefore: bigint = await stakingContract.balanceOf(this.account);
+
+    await this.ensureAllowance(underlyingAddress, marketAddress, amountBN);
+
+    const supplyTx = await marketContract.mint(amountBN);
+    await supplyTx.wait();
+
+    const stakingBalanceAfter: bigint = await stakingContract.balanceOf(this.account);
+    const minted = stakingBalanceAfter - stakingBalanceBefore;
+    if (minted <= 0n) {
+      throw new Error('Supply succeeded but no staking tokens were minted');
+    }
+
+    await this.ensureAllowance(stakingToken, miningAddress, minted);
+
+    const stakeTx = await miningContract.stake(minted);
+    await stakeTx.wait();
+
+    return {
+      supplyTxHash: supplyTx.hash,
+      stakeTxHash: stakeTx.hash,
+      stakedAmount: ethers.formatUnits(minted, stakingDecimals),
+    };
   }
 
   async redeem(marketAddress: string, amount: string): Promise<string> {
@@ -123,10 +220,9 @@ class MiningWeb3Service extends Web3Base {
   async stake(miningAddress: string, amount: string): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
-    const amountBN = ethers.parseUnits(amount, 18);
     const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
-
     const stakingToken: string = await miningContract.stakingToken();
+    const { amountBN } = await this.parseTokenAmount(stakingToken, amount, 'Stake');
 
     await this.ensureAllowance(stakingToken, miningAddress, amountBN);
 
@@ -139,8 +235,9 @@ class MiningWeb3Service extends Web3Base {
   async withdraw(miningAddress: string, amount: string): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
-    const amountBN = ethers.parseUnits(amount, 18);
     const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
+    const stakingToken: string = await miningContract.stakingToken();
+    const { amountBN } = await this.parseTokenAmount(stakingToken, amount, 'Withdraw');
 
     const tx = await miningContract.withdraw(amountBN);
     await tx.wait();

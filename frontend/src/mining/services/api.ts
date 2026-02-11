@@ -9,7 +9,7 @@ import type {
   Event,
   ContractAddresses,
   LiquidityMiningPool,
-  LiquidityMiningAccountPosition,
+  LiquidityMiningAccountSummary,
 } from '@/shared/types/mining';
 import type { HealthStatus } from '@/shared/types/common';
 
@@ -25,6 +25,7 @@ export type {
   ContractAddresses,
   LiquidityMiningPool,
   LiquidityMiningAccountPosition,
+  LiquidityMiningAccountSummary,
 } from '@/shared/types/mining';
 export type { HealthStatus } from '@/shared/types/common';
 
@@ -56,9 +57,9 @@ class APIService {
     return response.data.items ?? [];
   }
 
-  async getLiquidityMiningAccount(address: string): Promise<LiquidityMiningAccountPosition[]> {
+  async getLiquidityMiningAccount(address: string): Promise<LiquidityMiningAccountSummary> {
     const response = await apiClient.get(`/liquidity-mining/${address}`);
-    return response.data ?? [];
+    return response.data;
   }
 
   async getEvents(
