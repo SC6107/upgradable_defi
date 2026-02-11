@@ -2,7 +2,8 @@ import axios from 'axios';
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const apiClient = axios.create({
     baseURL: API_BASE_URL,
-    timeout: 10000,
+    // Sepolia reads can exceed 10s due multiple on-chain RPC calls.
+    timeout: 60000,
 });
 class APIService {
     async getHealth() {
@@ -11,7 +12,7 @@ class APIService {
     }
     async getMarkets() {
         const response = await apiClient.get('/markets');
-        return response.data.items;
+        return response.data?.items ?? [];
     }
     async getAccount(address) {
         const response = await apiClient.get(`/accounts/${address}`);
@@ -22,6 +23,14 @@ class APIService {
             params: refresh ? { refresh: 'true' } : undefined,
         });
         return response.data;
+    }
+    async getLiquidityMining() {
+        const response = await apiClient.get('/liquidity-mining');
+        return response.data.items ?? [];
+    }
+    async getLiquidityMiningAccount(address) {
+        const response = await apiClient.get(`/liquidity-mining/${address}`);
+        return response.data ?? [];
     }
     async getEvents(contract, event, fromBlock, toBlock, limit = 100) {
         const params = new URLSearchParams();

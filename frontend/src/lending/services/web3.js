@@ -21,6 +21,7 @@ const LENDING_TOKEN_ABI = [
     'function totalSupply() view returns (uint256)',
     'function totalBorrows() view returns (uint256)',
     'function getCash() view returns (uint256)',
+    'function liquidateBorrow(address borrower, uint256 repayAmount, address cTokenCollateral) external returns (uint256)',
 ];
 const ERC20_ABI = [
     'function approve(address spender, uint256 amount) external returns (bool)',
@@ -88,9 +89,10 @@ class LendingWeb3Service {
         return this.signer;
     }
     /**
-     * Supply tokens to lending market
+     * Supply tokens to lending market.
+     * If comptrollerAddress is provided, calls enterMarkets([marketAddress]) after mint so the position counts as collateral (liquidity).
      */
-    async supply(marketAddress, amount, underlyingAddress) {
+    async supply(marketAddress, amount, underlyingAddress, comptrollerAddress) {
         if (!this.signer) {
             throw new Error('Wallet not connected');
         }
@@ -108,6 +110,10 @@ class LendingWeb3Service {
         const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
         const mintTx = await lendingContract.mint(amountWei);
         const receipt = await mintTx.wait();
+        // Enter market so this supply counts as collateral (Comptroller.getAccountLiquidity will then return non-zero)
+        if (comptrollerAddress) {
+            await this.enterMarkets(comptrollerAddress, [marketAddress]);
+        }
         return receipt.hash;
     }
     /**
@@ -219,6 +225,30 @@ class LendingWeb3Service {
         const balance = await contract.balanceOf(this.account);
         const decimals = await contract.decimals();
         return ethers.formatUnits(balance, decimals);
+    }
+    /**
+     * Liquidate an underwater borrower: repay their debt and receive collateral.
+     * @param repayCTokenAddress The cToken market to repay (e.g. dUSDC)
+     * @param borrower The underwater borrower address
+     * @param repayAmount Amount of underlying to repay (in human units)
+     * @param collateralCTokenAddress The cToken to seize as collateral (e.g. dWETH)
+     */
+    async liquidateBorrow(repayCTokenAddress, borrower, repayAmount, collateralCTokenAddress, underlyingAddress) {
+        if (!this.signer || !this.account) {
+            throw new Error('Wallet not connected');
+        }
+        const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
+        const decimals = await underlyingContract.decimals();
+        const amountWei = ethers.parseUnits(repayAmount, decimals);
+        const allowance = await underlyingContract.allowance(this.account, repayCTokenAddress);
+        if (allowance < amountWei) {
+            const approveTx = await underlyingContract.approve(repayCTokenAddress, ethers.MaxUint256);
+            await approveTx.wait();
+        }
+        const repayContract = new ethers.Contract(repayCTokenAddress, LENDING_TOKEN_ABI, this.signer);
+        const tx = await repayContract.liquidateBorrow(borrower, amountWei, collateralCTokenAddress);
+        const receipt = await tx.wait();
+        return receipt.hash;
     }
 }
 export default new LendingWeb3Service();

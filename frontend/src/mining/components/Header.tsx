@@ -1,6 +1,5 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { useWallet } from '@/mining/hooks/useWallet';
 
 const TABS: { path: string; label: string }[] = [
   { path: '/mining/pools', label: 'Pools' },
@@ -10,8 +9,33 @@ const TABS: { path: string; label: string }[] = [
   { path: '/mining/analytics', label: '📊 Analytics' },
 ];
 
-export const Header: React.FC = () => {
-  const { wallet, connect, disconnect, loading } = useWallet();
+type Props = {
+  wallet: {
+    account: string | null;
+    isConnected: boolean;
+    chainId: number | null;
+  };
+  loading: boolean;
+  switchingNetwork: boolean;
+  isWrongNetwork: boolean;
+  expectedNetwork: string;
+  expectedChainId: number;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onSwitchNetwork: () => void;
+};
+
+export const Header: React.FC<Props> = ({
+  wallet,
+  loading,
+  switchingNetwork,
+  isWrongNetwork,
+  expectedNetwork,
+  expectedChainId,
+  onConnect,
+  onDisconnect,
+  onSwitchNetwork,
+}) => {
 
   const formatAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -54,11 +78,23 @@ export const Header: React.FC = () => {
             {wallet.isConnected ? (
               <div className="flex items-center gap-3">
                 <div className="hidden sm:block text-right">
-                  <p className="text-sm text-gray-400">Connected</p>
+                  <p className="text-sm text-gray-400">
+                    Connected {wallet.chainId != null ? `(Chain ${wallet.chainId})` : ''}
+                  </p>
                   <p className="text-sm font-semibold text-white">{formatAddress(wallet.account!)}</p>
                 </div>
+                {isWrongNetwork && (
+                  <button
+                    onClick={onSwitchNetwork}
+                    disabled={switchingNetwork}
+                    className="px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-medium transition-colors text-xs"
+                    title={`Switch to ${expectedNetwork} (${expectedChainId})`}
+                  >
+                    {switchingNetwork ? 'Switching...' : `Switch to ${expectedNetwork}`}
+                  </button>
+                )}
                 <button
-                  onClick={disconnect}
+                  onClick={onDisconnect}
                   className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium transition-colors"
                 >
                   Disconnect
@@ -66,7 +102,7 @@ export const Header: React.FC = () => {
               </div>
             ) : (
               <button
-                onClick={connect}
+                onClick={onConnect}
                 disabled={loading}
                 className="px-6 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-medium transition-colors disabled:opacity-50"
               >

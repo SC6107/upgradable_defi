@@ -2,7 +2,9 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_URL?: string;
-  // Add more env variables as needed
+  readonly VITE_NETWORK?: string;
+  readonly VITE_ANVIL_RPC_URL?: string;
+  readonly VITE_SEPOLIA_RPC_URL?: string;
 }
 
 interface ImportMeta {

@@ -33,11 +33,13 @@ const COMPTROLLER_ABI = [
 const LIQUIDITY_MINING_ABI = [
     'function stake(uint256 amount) external',
     'function withdraw(uint256 amount) external',
-    'function claim() external',
+    'function getReward() external',
+    'function exit() external',
     'function stakingToken() view returns (address)',
     'function rewardsToken() view returns (address)',
     'function balanceOf(address account) view returns (uint256)',
     'function earned(address account) view returns (uint256)',
+    'function decimals() view returns (uint8)',
 ];
 class Web3Service {
     constructor() {
@@ -197,13 +199,23 @@ class Web3Service {
         await tx.wait();
         return tx.hash;
     }
-    // Claim rewards
-    async claim(miningAddress) {
+    // Claim rewards (GOV)
+    async getReward(miningAddress) {
         if (!this.signer) {
             throw new Error('Wallet not connected');
         }
         const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
-        const tx = await miningContract.claim();
+        const tx = await miningContract.getReward();
+        await tx.wait();
+        return tx.hash;
+    }
+    // Withdraw all staked and claim rewards
+    async exit(miningAddress) {
+        if (!this.signer) {
+            throw new Error('Wallet not connected');
+        }
+        const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
+        const tx = await miningContract.exit();
         await tx.wait();
         return tx.hash;
     }

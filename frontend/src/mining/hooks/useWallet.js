@@ -1,29 +1,60 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import Web3Service from '../services/web3';
+import { TARGET_CHAIN_ID, TARGET_NETWORK_LABEL, isExpectedChainId, switchWalletToTargetNetwork, } from '@/config/network';
 export const useWallet = () => {
     const [wallet, setWallet] = useState({
         account: null,
         isConnected: false,
         chainId: null,
     });
+    const [switchingNetwork, setSwitchingNetwork] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const updateChainId = useCallback(async () => {
+        if (!window.ethereum)
+            return null;
+        const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+        const chainId = parseInt(chainIdHex, 16);
+        setWallet((prev) => ({ ...prev, chainId }));
+        return chainId;
+    }, []);
+    const switchNetwork = useCallback(async () => {
+        setSwitchingNetwork(true);
+        setError(null);
+        try {
+            const nextChainId = await switchWalletToTargetNetwork();
+            setWallet((prev) => ({ ...prev, chainId: nextChainId }));
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : `Failed to switch to ${TARGET_NETWORK_LABEL}`);
+            throw err;
+        }
+        finally {
+            setSwitchingNetwork(false);
+        }
+    }, []);
     const connect = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            if (!window.ethereum) {
-                throw new Error('MetaMask is not installed');
+            const account = await Web3Service.connect();
+            const chainId = await updateChainId();
+            if (chainId != null && !isExpectedChainId(chainId)) {
+                await switchNetwork();
+                await Web3Service.disconnect();
+                const switchedAccount = await Web3Service.connect();
+                const switchedChainId = await updateChainId();
+                setWallet({
+                    account: switchedAccount,
+                    isConnected: true,
+                    chainId: switchedChainId,
+                });
+                return;
             }
-            const accounts = await window.ethereum.request({
-                method: 'eth_requestAccounts',
-            });
-            const chainId = await window.ethereum.request({
-                method: 'eth_chainId',
-            });
             setWallet({
-                account: accounts[0],
+                account,
                 isConnected: true,
-                chainId: parseInt(chainId, 16),
+                chainId,
             });
         }
         catch (err) {
@@ -32,13 +63,46 @@ export const useWallet = () => {
         finally {
             setLoading(false);
         }
-    }, []);
-    const disconnect = useCallback(() => {
+    }, [switchNetwork, updateChainId]);
+    const disconnect = useCallback(async () => {
+        await Web3Service.disconnect();
         setWallet({
             account: null,
             isConnected: false,
             chainId: null,
         });
     }, []);
-    return { wallet, connect, disconnect, loading, error };
+    useEffect(() => {
+        if (!window.ethereum)
+            return undefined;
+        const handleAccountsChanged = async (accounts) => {
+            if (accounts.length === 0) {
+                await disconnect();
+                return;
+            }
+            setWallet((prev) => ({ ...prev, account: accounts[0], isConnected: true }));
+        };
+        const handleChainChanged = (chainIdHex) => {
+            const nextChainId = parseInt(chainIdHex, 16);
+            setWallet((prev) => ({ ...prev, chainId: nextChainId }));
+        };
+        window.ethereum.on?.('accountsChanged', handleAccountsChanged);
+        window.ethereum.on?.('chainChanged', handleChainChanged);
+        return () => {
+            window.ethereum?.removeListener?.('accountsChanged', handleAccountsChanged);
+            window.ethereum?.removeListener?.('chainChanged', handleChainChanged);
+        };
+    }, [disconnect]);
+    return {
+        wallet,
+        connect,
+        disconnect,
+        switchNetwork,
+        loading,
+        switchingNetwork,
+        error,
+        expectedChainId: TARGET_CHAIN_ID,
+        expectedNetwork: TARGET_NETWORK_LABEL,
+        isWrongNetwork: wallet.isConnected && !isExpectedChainId(wallet.chainId),
+    };
 };

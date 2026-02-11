@@ -26,7 +26,17 @@ function useMiningTab(): MiningTab {
 function MiningApp() {
   const activeTab = useMiningTab();
   const { markets, loading: marketsLoading } = useMarkets();
-  const { wallet } = useWallet();
+  const {
+    wallet,
+    loading: walletLoading,
+    switchingNetwork,
+    isWrongNetwork,
+    expectedNetwork,
+    expectedChainId,
+    connect,
+    disconnect,
+    switchNetwork,
+  } = useWallet();
   const { account, loading: accountLoading } = useAccount(wallet.account || null);
   const { health } = useHealth();
 
@@ -48,9 +58,35 @@ function MiningApp() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white">
-      <Header />
+      <Header
+        wallet={wallet}
+        loading={walletLoading}
+        switchingNetwork={switchingNetwork}
+        isWrongNetwork={isWrongNetwork}
+        expectedNetwork={expectedNetwork}
+        expectedChainId={expectedChainId}
+        onConnect={connect}
+        onDisconnect={disconnect}
+        onSwitchNetwork={switchNetwork}
+      />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:seo-8 py-8">
+        {wallet.isConnected && isWrongNetwork && (
+          <div className="mb-4 flex items-center justify-between gap-4 rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
+            <span>
+              Wallet is on chain {wallet.chainId}. Please switch to {expectedNetwork} (chain{' '}
+              {expectedChainId}).
+            </span>
+            <button
+              type="button"
+              onClick={switchNetwork}
+              disabled={switchingNetwork}
+              className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+            >
+              {switchingNetwork ? 'Switching...' : `Switch to ${expectedNetwork}`}
+            </button>
+          </div>
+        )}
         {/* Overview Stats - Hidden on Analytics tab */}
         {activeTab !== 'analytics' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

@@ -29,8 +29,24 @@ function LendingApp() {
   const [comptroller, setComptroller] = useState<string | null>(null);
   const [refetchError, setRefetchError] = useState<string | null>(null);
 
-  const { markets, loading: marketsLoading, refetch: refetchMarkets } = useMarkets();
-  const { account, isConnected, connect, disconnect } = useWallet();
+  const {
+    markets,
+    loading: marketsLoading,
+    error: marketsError,
+    refetch: refetchMarkets,
+  } = useMarkets();
+  const {
+    account,
+    isConnected,
+    chainId,
+    isWrongNetwork,
+    expectedChainId,
+    expectedNetwork,
+    switchingNetwork,
+    connect,
+    disconnect,
+    switchNetwork,
+  } = useWallet();
   const { account: accountData, loading: accountLoading, refetch: refetchAccount } = useAccount(account);
 
   useEffect(() => {
@@ -123,11 +139,32 @@ function LendingApp() {
       <Header
         account={account}
         isConnected={isConnected}
+        chainId={chainId}
+        isWrongNetwork={isWrongNetwork}
+        expectedChainId={expectedChainId}
+        expectedNetwork={expectedNetwork}
+        onSwitchNetwork={switchNetwork}
+        switchingNetwork={switchingNetwork}
         onConnect={connect}
         onDisconnect={disconnect}
       />
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+        {isConnected && isWrongNetwork && (
+          <div className="mb-4 flex items-center justify-between gap-4 rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
+            <span>
+              Wallet is on chain {chainId}. Please switch to {expectedNetwork} (chain {expectedChainId}).
+            </span>
+            <button
+              type="button"
+              onClick={switchNetwork}
+              disabled={switchingNetwork}
+              className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+            >
+              {switchingNetwork ? 'Switching...' : `Switch to ${expectedNetwork}`}
+            </button>
+          </div>
+        )}
         {refetchError && (
           <div className="mb-4 flex items-center justify-between gap-4 rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
             <span>{refetchError}. Please click Refresh to retry.</span>
@@ -172,6 +209,8 @@ function LendingApp() {
               <MarketsTable
                 markets={markets}
                 loading={marketsLoading}
+                error={marketsError}
+                onRetry={refetch}
                 onSupply={handleSupply}
                 onBorrow={handleBorrow}
               />

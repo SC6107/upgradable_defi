@@ -4,7 +4,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  // Sepolia reads can exceed 10s due multiple on-chain RPC calls.
+  timeout: 60000,
 });
 
 export interface Market {

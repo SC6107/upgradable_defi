@@ -1,137 +1,98 @@
-# Liquidity Mining Frontend
+# Upgradable DeFi Frontend
 
-A modern, responsive frontend for interacting with the liquidity mining DeFi protocol.
+React + Vite frontend for the Upgradable DeFi protocol.
 
-## Features
+This app includes two product surfaces:
+- `Lending` (markets, positions, supply/borrow/repay/withdraw)
+- `Mining` (pools, stake/withdraw/claim rewards)
 
-- **Pool Management**: View and analyze liquidity mining pools with real-time metrics
-- **Portfolio Tracking**: Monitor your supplied assets, borrowing positions, and account health
-- **Transaction History**: Track all protocol interactions and events
-- **Wallet Integration**: Connect MetaMask or other Web3 wallets
-- **Real-time Data**: Live updates of TVL, APR, and utilization rates
+## Requirements
 
-## Tech Stack
+- Node.js 18+
+- Running backend API (`http://127.0.0.1:8000` for local default proxy)
+- MetaMask (or compatible EVM wallet)
 
-- **Frontend Framework**: React 18 + TypeScript
-- **Styling**: Tailwind CSS
-- **Build Tool**: Vite
-- **Web3**: ethers.js / web3.js
-- **API Client**: axios
-
-## Project Structure
-
-```
-src/
-├── components/          # Reusable React components
-│   ├── Header.tsx      # Navigation header with wallet connection
-│   ├── PoolsTable.tsx  # Main pools list and metrics
-│   ├── UserPortfolio.tsx # User's positions and account info
-│   ├── Transactions.tsx # Transaction history
-│   └── StatCard.tsx    # Data display cards
-├── hooks/              # React custom hooks
-│   ├── useAPI.ts       # API calls hooks (useMarkets, useAccount, useHealth)
-│   └── useWallet.ts    # Wallet connection hook
-├── services/           # Business logic
-│   └── api.ts          # API client and interface definitions
-├── App.tsx             # Main application component
-└── main.tsx            # Application entry point
-```
-
-## Getting Started
-
-### Installation
+## Install
 
 ```bash
 cd frontend
 npm install
 ```
 
-### Environment Variables
+## Configuration
 
-Create a `.env` file in the frontend directory:
+Frontend runtime config is read in this order:
+1. Repo root `/.env_example` (`VITE_*` keys)
+2. `frontend/.env` fallback
+3. Built-in defaults in `frontend/vite.config.ts`
+
+### Supported frontend env vars
 
 ```env
 VITE_API_URL=/api
+VITE_NETWORK=sepolia
+VITE_ANVIL_RPC_URL=http://127.0.0.1:8545
+VITE_SEPOLIA_RPC_URL=https://rpc.sepolia.org
 ```
 
-For local development, `VITE_API_URL=/api` is recommended so Vite proxy forwards requests to the backend without CORS issues.
+### Network switch
 
-### Development
+Set in `/.env_example`:
+
+- `VITE_NETWORK=anvil` for chain `31337`
+- `VITE_NETWORK=sepolia` for chain `11155111`
+
+The app validates wallet chain and shows a `Switch to ...` action when wallet network does not match the configured target network.
+
+## Run (Development)
 
 ```bash
 npm run dev
 ```
 
-The application will start at `http://localhost:5173`
+Default URL: `http://localhost:5173`
 
-### Build
+Vite proxies `/api/*` to backend based on `VITE_API_URL`.
+- If `VITE_API_URL=/api`, proxy target is `http://localhost:8000`
+- If `VITE_API_URL` is an absolute URL, proxy uses that URL
+
+## Backend dependency
+
+Frontend pages rely on backend endpoints such as:
+- `GET /markets`
+- `GET /contracts/addresses`
+- `GET /protocol/upgrade-info`
+- `GET /accounts/{address}`
+- `GET /liquidity-mining`
+
+If backend is not running, frontend will show request errors.
+
+## Current UX behavior
+
+- Lending markets load once on page entry.
+- Markets refresh only when user clicks `Refresh`.
+- While refresh is in progress, UI shows non-blocking `Refreshing markets...` status.
+- Token address row supports one-click `Copy` for market assets (e.g. WETH/USDC underlying addresses).
+
+## Sepolia latency note
+
+On Sepolia, some backend calls can take 10-30s due on-chain RPC latency. Frontend API clients are configured with longer timeouts to avoid premature cancellation.
+
+## Scripts
 
 ```bash
+npm run dev
 npm run build
+npm run preview
+npm run lint
+npm run type-check
 ```
 
-## API Integration
+## Project structure (high level)
 
-The frontend connects to the backend API with the following endpoints:
+- `src/lending/*` Lending UI, hooks, and services
+- `src/mining/*` Mining UI, hooks, and services
+- `src/config/network.ts` target chain config + wallet network switching
+- `src/ProtocolUpgradeInfo.tsx` upgradeability metadata panel
+- `vite.config.ts` env resolution and API proxy behavior
 
-- `GET /health` - Chain and indexer status
-- `GET /markets` - Available liquidity pools
-- `GET /accounts/{address}` - User account data and positions
-- `GET /events` - Protocol events and transactions
-- `GET /stats` - Event statistics
-
-## Key Components
-
-### Header
-Navigation and wallet connection management. Shows connected wallet address and provides disconnect option.
-
-### PoolsTable
-Displays all available liquidity pools with sortable columns:
-- Pool name/symbol
-- Total Value Locked (TVL)
-- Supply APR (Annual Percentage Rate)
-- Borrow APR
-- Utilization rate (visual progress bar)
-- Current asset price
-- Action buttons
-
-### UserPortfolio
-Shows user's account information when connected:
-- Account liquidity and health status
-- List of supplied and borrowed assets
-- Position values in USD
-- Collateral factors
-
-### Transactions
-Historical view of all user interactions:
-- Event type (Deposit, Withdraw, Borrow, Repay)
-- Block and transaction details
-- Detailed event arguments
-
-## Styling
-
-The UI uses a modern dark theme with:
-- Gradient backgrounds (#FF007A to purple)
-- Slate and gray color scheme
-- Responsive grid layouts
-- Smooth transitions and hover states
-
-## Browser Support
-
-- Chrome/Chromium latest
-- Firefox latest
-- Safari latest
-- Edge latest
-
-Requires MetaMask or compatible Web3 wallet for full functionality.
-
-## Future Enhancements
-
-- [ ] Deposit/Withdrawal functionality
-- [ ] Approve token spending flow
-- [ ] Historical performance charts
-- [ ] Advanced trading pairs
-- [ ] Portfolio performance analytics
-- [ ] Mobile app optimization
-- [ ] Dark/Light theme toggle
-- [ ] Multiple wallet support (Ledger, Trezor, etc.)

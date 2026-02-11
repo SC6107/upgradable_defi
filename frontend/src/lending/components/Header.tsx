@@ -4,6 +4,12 @@ import { shortAddress } from '../utils';
 type Props = {
   account: string | null;
   isConnected: boolean;
+  chainId: number | null;
+  isWrongNetwork: boolean;
+  expectedChainId: number;
+  expectedNetwork: string;
+  onSwitchNetwork: () => void;
+  switchingNetwork: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
 };
@@ -13,7 +19,18 @@ const TABS: { path: string; label: string }[] = [
   { path: '/lending/positions', label: 'Positions' },
 ];
 
-export function Header({ account, isConnected, onConnect, onDisconnect }: Props) {
+export function Header({
+  account,
+  isConnected,
+  chainId,
+  isWrongNetwork,
+  expectedChainId,
+  expectedNetwork,
+  onSwitchNetwork,
+  switchingNetwork,
+  onConnect,
+  onDisconnect,
+}: Props) {
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-700/80 bg-zinc-900/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
@@ -45,9 +62,22 @@ export function Header({ account, isConnected, onConnect, onDisconnect }: Props)
           {isConnected && account ? (
             <div className="flex items-center gap-3">
               <span className="hidden text-right sm:block">
-                <span className="block text-xs text-zinc-500">Connected</span>
+                <span className="block text-xs text-zinc-500">
+                  Connected {chainId != null ? `(Chain ${chainId})` : ''}
+                </span>
                 <span className="font-mono text-sm text-zinc-200">{shortAddress(account)}</span>
               </span>
+              {isWrongNetwork && (
+                <button
+                  type="button"
+                  onClick={onSwitchNetwork}
+                  disabled={switchingNetwork}
+                  className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-500 disabled:opacity-50"
+                  title={`Switch to ${expectedNetwork} (${expectedChainId})`}
+                >
+                  {switchingNetwork ? 'Switching...' : `Switch to ${expectedNetwork}`}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onDisconnect}

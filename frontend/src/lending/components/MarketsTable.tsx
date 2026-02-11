@@ -5,21 +5,37 @@ import { formatPct, getPrice, getMarketSupplyUsd, getSupplyApy, getBorrowApy } f
 type Props = {
   markets: LendingMarket[];
   loading: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   onSupply: (m: LendingMarket) => void;
   onBorrow: (m: LendingMarket) => void;
 };
 
 type SortKey = 'symbol' | 'totalSupplyUsd' | 'supplyAPY' | 'borrowAPY';
 
-export function MarketsTable({ markets, loading, onSupply, onBorrow }: Props) {
+export function MarketsTable({ markets, loading, error, onRetry, onSupply, onBorrow }: Props) {
   const [sortBy, setSortBy] = useState<SortKey>('symbol');
   const [desc, setDesc] = useState(true);
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
 
   const toggleSort = (key: SortKey) => {
     if (sortBy === key) setDesc((d) => !d);
     else {
       setSortBy(key);
       setDesc(true);
+    }
+  };
+
+  const handleCopyAddress = async (address?: string) => {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedAddress(address);
+      setTimeout(() => {
+        setCopiedAddress((prev) => (prev === address ? null : prev));
+      }, 1200);
+    } catch {
+      // Ignore clipboard failures (browser permissions/unsupported context).
     }
   };
 
@@ -51,19 +67,26 @@ export function MarketsTable({ markets, loading, onSupply, onBorrow }: Props) {
     });
   }, [markets, sortBy, desc]);
 
-  if (loading) {
-    return (
-      <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 flex items-center justify-center h-64">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
-        <span className="ml-3 text-zinc-400">Loading markets...</span>
-      </div>
-    );
-  }
-
   if (markets.length === 0) {
     return (
-      <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-12 text-center text-zinc-400">
-        No markets available
+      <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-12 text-center text-zinc-400 space-y-3">
+        {loading ? (
+          <div className="inline-flex items-center gap-2 text-zinc-300">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
+            Fetching markets...
+          </div>
+        ) : null}
+        {!loading && error ? <div className="text-red-300">{error}</div> : null}
+        {!loading && !error ? <div>No markets available</div> : null}
+        {onRetry ? (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-lg bg-zinc-700 px-3 py-1.5 text-sm text-white hover:bg-zinc-600"
+          >
+            Retry
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -92,6 +115,26 @@ export function MarketsTable({ markets, loading, onSupply, onBorrow }: Props) {
 
   return (
     <div className="space-y-3">
+      {loading && (
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 px-4 py-2 text-xs text-zinc-400 inline-flex items-center gap-2">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
+          Refreshing markets...
+        </div>
+      )}
+      {!loading && error && (
+        <div className="rounded-xl border border-red-700/50 bg-red-950/30 px-4 py-3 text-red-300 text-sm flex items-center justify-between gap-4">
+          <span>{error}</span>
+          {onRetry ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="shrink-0 rounded-lg bg-red-700 px-3 py-1.5 text-white hover:bg-red-600"
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
+      )}
       {!hasData && (
         <div className="rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
           Chain data missing. Please ensure Anvil is running and contracts are deployed, then restart the backend.
@@ -113,7 +156,6 @@ export function MarketsTable({ markets, loading, onSupply, onBorrow }: Props) {
           <tbody className="divide-y divide-zinc-700/60">
             {sorted.map((m) => {
               const price = getPrice(m);
-              const totalSupply = m.totalSupply ?? (m as { totalSupplyUnderlying?: number }).totalSupplyUnderlying ?? 0;
               const totalBorrows = m.totalBorrows ?? (m as { totalBorrowsUnderlying?: number }).totalBorrowsUnderlying ?? 0;
               const supplyUsd = getMarketSupplyUsd(m);
               const borrowsUsd = (m as { totalBorrowsUsd?: number }).totalBorrowsUsd ?? totalBorrows * price;
@@ -122,6 +164,7 @@ export function MarketsTable({ markets, loading, onSupply, onBorrow }: Props) {
               const util = (m.utilization ?? 0) * 100;
               const symbol = m.symbol ?? '—';
               const abbr = symbol.length >= 2 ? symbol.slice(0, 2) : (m.market?.slice(2, 4) ?? '—');
+              const tokenAddress = m.underlying || m.market;
 
               return (
                 <tr key={m.market ?? symbol} className="hover:bg-zinc-800/50">
@@ -132,7 +175,19 @@ export function MarketsTable({ markets, loading, onSupply, onBorrow }: Props) {
                       </div>
                       <div>
                         <div className="font-medium text-white">{symbol}</div>
-                        <div className="text-xs text-zinc-500">{m.market?.slice(0, 10)}...</div>
+                        <div className="inline-flex items-center gap-2 text-xs text-zinc-500">
+                          <span>{tokenAddress?.slice(0, 10)}...</span>
+                          {tokenAddress ? (
+                            <button
+                              type="button"
+                              onClick={() => handleCopyAddress(tokenAddress)}
+                              className="rounded bg-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-600"
+                              title={tokenAddress}
+                            >
+                              {copiedAddress === tokenAddress ? 'Copied' : 'Copy'}
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   </td>

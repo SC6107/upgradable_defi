@@ -5,6 +5,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import API from '../services/api';
 import Web3Service from '../services/web3';
+import { TARGET_CHAIN_ID, TARGET_NETWORK_LABEL, isExpectedChainId, switchWalletToTargetNetwork, } from '@/config/network';
 /**
  * Hook for fetching lending markets
  */
@@ -20,7 +21,9 @@ export const useMarkets = () => {
             setMarkets(data);
         }
         catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to fetch markets');
+            const msg = err instanceof Error ? err.message : 'Failed to fetch markets';
+            setError(msg);
+            throw err;
         }
         finally {
             setLoading(false);
@@ -53,7 +56,9 @@ export const useAccount = (address) => {
             setAccount(data);
         }
         catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to fetch account');
+            const msg = err instanceof Error ? err.message : 'Failed to fetch account';
+            setError(msg);
+            throw err;
         }
         finally {
             setLoading(false);
@@ -66,6 +71,9 @@ export const useAccount = (address) => {
             const interval = setInterval(fetchAccount, 15000);
             return () => clearInterval(interval);
         }
+        setAccount(null);
+        setLoading(false);
+        setError(null);
         return undefined;
     }, [address, fetchAccount]);
     return { account, loading, error, refetch: fetchAccount };
@@ -77,8 +85,32 @@ export const useWallet = () => {
     const [account, setAccount] = useState(null);
     const [isConnected, setIsConnected] = useState(false);
     const [chainId, setChainId] = useState(null);
+    const [switchingNetwork, setSwitchingNetwork] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const updateChainId = useCallback(async () => {
+        if (!window.ethereum)
+            return null;
+        const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+        const parsed = parseInt(chainIdHex, 16);
+        setChainId(parsed);
+        return parsed;
+    }, []);
+    const switchNetwork = useCallback(async () => {
+        setSwitchingNetwork(true);
+        setError(null);
+        try {
+            const next = await switchWalletToTargetNetwork();
+            setChainId(next);
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : `Failed to switch to ${TARGET_NETWORK_LABEL}`);
+            throw err;
+        }
+        finally {
+            setSwitchingNetwork(false);
+        }
+    }, []);
     const connect = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -86,10 +118,13 @@ export const useWallet = () => {
             const address = await Web3Service.connect();
             setAccount(address);
             setIsConnected(true);
-            // Get chain ID
-            if (window.ethereum) {
-                const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
-                setChainId(parseInt(chainIdHex, 16));
+            const connectedChain = await updateChainId();
+            if (connectedChain != null && !isExpectedChainId(connectedChain)) {
+                await switchNetwork();
+                await Web3Service.disconnect();
+                const nextAddress = await Web3Service.connect();
+                setAccount(nextAddress);
+                await updateChainId();
             }
         }
         catch (err) {
@@ -98,7 +133,7 @@ export const useWallet = () => {
         finally {
             setLoading(false);
         }
-    }, []);
+    }, [switchNetwork, updateChainId]);
     const disconnect = useCallback(async () => {
         await Web3Service.disconnect();
         setAccount(null);
@@ -132,10 +167,15 @@ export const useWallet = () => {
         account,
         isConnected,
         chainId,
+        isWrongNetwork: isConnected && !isExpectedChainId(chainId),
+        expectedChainId: TARGET_CHAIN_ID,
+        expectedNetwork: TARGET_NETWORK_LABEL,
+        switchingNetwork,
         loading,
         error,
         connect,
         disconnect,
+        switchNetwork,
     };
 };
 /**
