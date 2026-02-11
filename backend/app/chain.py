@@ -1,4 +1,5 @@
 import math
+import sys
 from decimal import Decimal, getcontext
 from typing import Any, Dict, List, Optional
 
@@ -7,6 +8,7 @@ from web3 import Web3
 SECONDS_PER_YEAR = 365 * 24 * 3600
 PRICE_DECIMALS = Decimal(10**8)
 WAD = Decimal(10**18)
+MAX_EXP_INPUT = math.log(sys.float_info.max)
 
 from .abi import load_abi
 from .config import RPC_URL, load_addresses
@@ -165,6 +167,47 @@ class ChainReader:
         if amount is None or price_usd is None:
             return None
         return Decimal(str(amount)) * Decimal(str(price_usd))
+
+    def _safe_decimal_to_float(self, value: Optional[Decimal]) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            result = float(value)
+        except (OverflowError, ValueError):
+            return None
+        return result if math.isfinite(result) else None
+
+    def _apr_to_apy(self, apr: Optional[float]) -> Optional[float]:
+        if apr is None or not math.isfinite(apr):
+            return None
+        if apr > MAX_EXP_INPUT:
+            return None
+        return math.expm1(apr)
+
+    def _calculate_apr_apy(
+        self,
+        reward_rate: Optional[int],
+        total_staked: Optional[int],
+        rewards_decimals: Optional[int],
+        staking_decimals: Optional[int],
+    ) -> tuple[Optional[float], Optional[float]]:
+        if (
+            reward_rate is None
+            or total_staked is None
+            or total_staked <= 0
+            or rewards_decimals is None
+            or staking_decimals is None
+        ):
+            return None, None
+
+        rewards_per_year = Decimal(reward_rate) * SECONDS_PER_YEAR / (Decimal(10) ** rewards_decimals)
+        staked_value = Decimal(total_staked) / (Decimal(10) ** staking_decimals)
+        if staked_value <= 0:
+            return None, None
+
+        apr = self._safe_decimal_to_float(rewards_per_year / staked_value)
+        apy = self._apr_to_apy(apr)
+        return apr, apy
 
     def get_markets(self) -> List[Dict[str, Any]]:
         results = []
@@ -726,19 +769,12 @@ class ChainReader:
             reward_rate = self._call_fn(mining, "rewardRate")
             total_staked = self._call_fn(mining, "totalSupply")
 
-            apr = None
-            apy = None
-            if (
-                reward_rate is not None
-                and total_staked is not None
-                and total_staked > 0
-                and rewards_decimals is not None
-                and staking_decimals is not None
-            ):
-                rewards_per_year = Decimal(reward_rate) * SECONDS_PER_YEAR / Decimal(10**rewards_decimals)
-                staked_value = Decimal(total_staked) / Decimal(10**staking_decimals)
-                apr = float(rewards_per_year / staked_value)
-                apy = math.exp(apr) - 1
+            apr, apy = self._calculate_apr_apy(
+                reward_rate,
+                total_staked,
+                rewards_decimals,
+                staking_decimals,
+            )
 
             results.append(
                 {
@@ -782,19 +818,12 @@ class ChainReader:
             reward_rate = self._call_fn(mining, "rewardRate")
             total_staked = self._call_fn(mining, "totalSupply")
 
-            apr = None
-            apy = None
-            if (
-                reward_rate is not None
-                and total_staked is not None
-                and total_staked > 0
-                and rewards_decimals is not None
-                and staking_decimals is not None
-            ):
-                rewards_per_year = Decimal(reward_rate) * SECONDS_PER_YEAR / Decimal(10**rewards_decimals)
-                staked_value = Decimal(total_staked) / Decimal(10**staking_decimals)
-                apr = float(rewards_per_year / staked_value)
-                apy = math.exp(apr) - 1
+            apr, apy = self._calculate_apr_apy(
+                reward_rate,
+                total_staked,
+                rewards_decimals,
+                staking_decimals,
+            )
 
             results.append(
                 {
