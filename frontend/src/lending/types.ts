@@ -1,6 +1,7 @@
 /**
  * Lending Types
- * Type definitions for lending markets and user positions
+ * Type definitions for lending markets and user positions.
+ * All keys are camelCase — the shared API interceptor handles normalization.
  */
 
 export interface LendingMarket {
@@ -16,7 +17,16 @@ export interface LendingMarket {
   utilization: number;
   borrowRatePerYear: number;
   supplyRatePerYear: number;
+  supplyAprPct?: number;
+  borrowAprPct?: number;
+  supplyAPY?: number;
+  borrowAPY?: number;
   price: number;
+  priceUsd?: number;
+  totalSupplyUsd?: number;
+  totalBorrowsUsd?: number;
+  totalSupplyUnderlying?: number;
+  totalBorrowsUnderlying?: number;
   collateralFactor: number;
   isListed: boolean;
 }
@@ -31,15 +41,19 @@ export interface UserPosition {
   borrowBalance: number;
   exchangeRate: number;
   price: number;
+  priceUsd?: number;
   collateralFactor: number;
   isListed: boolean;
   supplyAPY: number;
   borrowAPY: number;
+  supplyAprPct?: number;
+  borrowAprPct?: number;
 }
 
 export interface AccountData {
   account: string;
   liquidity: number;
+  liquidityUsd?: number;
   shortfall: number;
   isHealthy: boolean;
   positions: UserPosition[];

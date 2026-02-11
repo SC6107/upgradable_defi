@@ -1,190 +1,359 @@
-/**
- * User Positions Component
- * Displays user's supply and borrow positions
- */
-import React from 'react';
-import type { AccountData } from '../types';
+import { useState, useEffect, useRef } from 'react';
+import type { AccountData, UserPosition, LendingMarket } from '../types';
+import { formatPct, getPrice, formatUsdAuto, shortAddress, getPositionBalance, getSupplyApy, getBorrowApy } from '../utils';
+import Web3Service from '../services/web3';
 
-import type { UserPosition } from '../types';
-
-interface UserPositionsProps {
+type Props = {
   account: AccountData | null;
   loading: boolean;
   connected: boolean;
-  onWithdraw: (position: UserPosition) => void;
-  onRepay: (position: UserPosition) => void;
+  markets?: LendingMarket[];
+  onSupply: (m: LendingMarket) => void;
+  onBorrow: (m: LendingMarket) => void;
+  onWithdraw: (p: UserPosition) => void;
+  onRepay: (p: UserPosition) => void;
+  comptrollerAddress?: string | null;
+  onRefetch?: () => void | Promise<void>;
+};
+
+function buildSummary(positions: UserPosition[], liquidityUsd: number | undefined) {
+  const totalSupplied = positions.reduce((s, p) => s + getPositionBalance(p, 'supplyUnderlying') * getPrice(p), 0);
+  const totalBorrowed = positions.reduce((s, p) => s + getPositionBalance(p, 'borrowBalance') * getPrice(p), 0);
+  const borrowLimitFromCf = positions.reduce(
+    (s, p) => s + getPositionBalance(p, 'supplyUnderlying') * getPrice(p) * (p.collateralFactor ?? 0),
+    0
+  );
+  // When liquidity is 0 (not entered markets), show theoretical limit from collateral so user sees e.g. $500
+  const borrowLimit =
+    typeof liquidityUsd === 'number' && liquidityUsd > 0
+      ? totalBorrowed + liquidityUsd
+      : borrowLimitFromCf;
+  return { totalSupplied, totalBorrowed, borrowLimit };
 }
 
-export const UserPositions: React.FC<UserPositionsProps> = ({
+function PositionTable({
+  title,
+  positions,
+  markets,
+  type,
+  onAction,
+  actionLabel,
+  actionClass,
+  onSecondaryAction,
+  secondaryActionLabel,
+  secondaryActionClass,
+  isSecondaryActionDisabled,
+  onTertiaryAction,
+  tertiaryActionLabel,
+  tertiaryActionClass,
+  isTertiaryActionDisabled,
+  valueKey,
+  apyKey,
+}: {
+  title: string;
+  positions: UserPosition[];
+  markets?: LendingMarket[] | null;
+  type: 'supply' | 'borrow';
+  onAction: (p: UserPosition) => void;
+  actionLabel: string;
+  actionClass: string;
+  onSecondaryAction?: (p: UserPosition) => void;
+  secondaryActionLabel?: string;
+  secondaryActionClass?: string;
+  isSecondaryActionDisabled?: (p: UserPosition) => boolean;
+  onTertiaryAction?: (p: UserPosition) => void;
+  tertiaryActionLabel?: string;
+  tertiaryActionClass?: string;
+  isTertiaryActionDisabled?: (p: UserPosition) => boolean;
+  valueKey: 'supplyUnderlying' | 'borrowBalance';
+  apyKey: 'supplyRatePerYear' | 'borrowRatePerYear';
+}) {
+  // Same APY source as Markets: position first, then market fallback (getSupplyApy/getBorrowApy)
+  const getApy = (p: UserPosition): number | undefined => {
+    const m = markets?.find((x) => x.market?.toLowerCase() === p.market?.toLowerCase()) ?? null;
+    return apyKey === 'supplyRatePerYear' ? getSupplyApy(p, m) : getBorrowApy(p, m);
+  };
+  const hasSecondaryAction = Boolean(onSecondaryAction && secondaryActionLabel);
+  const hasTertiaryAction = Boolean(onTertiaryAction && tertiaryActionLabel);
+
+  return (
+    <section>
+      <h3 className="text-lg font-semibold text-zinc-200 mb-3">{title}</h3>
+      <div className="rounded-xl border border-zinc-700/80 overflow-hidden bg-zinc-900/60">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-zinc-700/80 bg-zinc-800/80 text-zinc-400 text-left">
+              <th className="px-4 py-3 font-medium">Asset</th>
+              <th className="px-4 py-3 text-right font-medium">Balance (underlying)</th>
+              <th className="px-4 py-3 text-right font-medium">Value (USD)</th>
+              <th className="px-4 py-3 text-right font-medium">APY</th>
+              {type === 'supply' && (
+                <th className="px-4 py-3 text-right font-medium">Collateral</th>
+              )}
+              <th
+                className={`px-4 py-3 text-right font-medium ${
+                  hasSecondaryAction && hasTertiaryAction ? 'w-72' : hasSecondaryAction || hasTertiaryAction ? 'w-44' : 'w-24'
+                }`}
+              >
+                Action
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-700/60">
+            {positions.map((p) => {
+              const balance = getPositionBalance(p, valueKey);
+              const price = getPrice(p);
+              // Value USD = balance (human token) × price (USD per token); API uses human units
+              const valueUsd = Number.isFinite(balance) && Number.isFinite(price) ? balance * price : 0;
+              const apyRaw = getApy(p);
+              const apy = apyRaw != null && Number.isFinite(Number(apyRaw)) ? Number(apyRaw) : undefined;
+              const decimals = typeof p.decimals === 'number' ? p.decimals : 4;
+              return (
+                <tr key={p.market} className="hover:bg-zinc-800/50">
+                  <td className="px-4 py-3 font-medium text-white">{p.symbol}</td>
+                  <td className="px-4 py-3 text-right text-zinc-200">
+                    {Number.isFinite(balance) ? balance.toFixed(Math.min(decimals, 8)) : '0.0000'}{' '}
+                    <span className="text-zinc-500">{p.symbol}</span>
+                  </td>
+                  <td className="px-4 py-3 text-right text-zinc-200">{formatUsdAuto(valueUsd)}</td>
+                  <td className={`px-4 py-3 text-right ${type === 'supply' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {formatPct(apy)}%
+                  </td>
+                  {type === 'supply' && (
+                    <td className="px-4 py-3 text-right text-zinc-400">
+                      {((p.collateralFactor ?? 0) * 100).toFixed(0)}%
+                    </td>
+                  )}
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {hasTertiaryAction && onTertiaryAction && tertiaryActionLabel && (
+                        <button
+                          type="button"
+                          onClick={() => onTertiaryAction(p)}
+                          disabled={Boolean(isTertiaryActionDisabled?.(p))}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${tertiaryActionClass ?? ''}`}
+                        >
+                          {tertiaryActionLabel}
+                        </button>
+                      )}
+                      {hasSecondaryAction && onSecondaryAction && secondaryActionLabel && (
+                        <button
+                          type="button"
+                          onClick={() => onSecondaryAction(p)}
+                          disabled={Boolean(isSecondaryActionDisabled?.(p))}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${secondaryActionClass ?? ''}`}
+                        >
+                          {secondaryActionLabel}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onAction(p)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${actionClass}`}
+                      >
+                        {actionLabel}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export function UserPositions({
   account,
   loading,
   connected,
+  markets = [],
+  onSupply,
+  onBorrow,
   onWithdraw,
   onRepay,
-}) => {
+  comptrollerAddress,
+  onRefetch,
+}: Props) {
+  const [entering, setEntering] = useState(false);
+  const [enterMarketsError, setEnterMarketsError] = useState<string | null>(null);
+  const [enterMarketsSuccess, setEnterMarketsSuccess] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Refetch when user lands on positions tab, and poll once more after delay so balance/value/APY are fresh
+  useEffect(() => {
+    if (!connected || !onRefetch) return;
+    onRefetch();
+    pollRef.current = setTimeout(() => {
+      onRefetch();
+      pollRef.current = null;
+    }, 2500);
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
+  }, [connected, onRefetch]);
+
+  const handleEnterMarkets = async () => {
+    if (!comptrollerAddress || !account || !onRefetch) return;
+    const markets = account.positions
+      .filter((p) => getPositionBalance(p, 'supplyUnderlying') > 0)
+      .map((p) => p.market)
+      .filter((m): m is string => typeof m === 'string' && m.length > 0);
+    if (markets.length === 0) return;
+    setEnterMarketsError(null);
+    setEnterMarketsSuccess(null);
+    setEntering(true);
+    try {
+      const txHash = await Web3Service.enterMarkets(comptrollerAddress, markets);
+      setEnterMarketsSuccess(`Collateral enabled. Tx: ${txHash.slice(0, 10)}...`);
+      try {
+        await onRefetch();
+      } catch {
+        // Do not override success state when post-tx refresh fails.
+      }
+    } catch (err) {
+      setEnterMarketsError(err instanceof Error ? err.message : 'Failed to enable collateral');
+    } finally {
+      setEntering(false);
+    }
+  };
+
   if (!connected) {
     return (
-      <div className="bg-slate-800 rounded-lg p-8 text-center">
-        <p className="text-gray-400">Please connect wallet first</p>
+      <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-12 text-center">
+        <p className="text-zinc-400">Please connect your wallet first</p>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="bg-slate-800 rounded-lg p-8 text-center">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-        <p className="mt-4 text-gray-400">Loading positions...</p>
+      <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-12 text-center">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
+        <p className="mt-3 text-zinc-400">Loading positions...</p>
       </div>
     );
   }
 
-  if (!account || account.positions.length === 0) {
+  if (!account || !account.positions?.length) {
     return (
-      <div className="bg-slate-800 rounded-lg p-8 text-center">
-        <p className="text-gray-400">No positions found</p>
+      <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-12 text-center">
+        <p className="text-zinc-400">No positions yet</p>
       </div>
     );
   }
 
-  const supplyPositions = account.positions.filter((p) => p.supplyUnderlying > 0);
-  const borrowPositions = account.positions.filter((p) => p.borrowBalance > 0);
+  const supplyPositions = account.positions.filter((p) => getPositionBalance(p, 'supplyUnderlying') > 0);
+  const borrowPositions = account.positions.filter((p) => getPositionBalance(p, 'borrowBalance') > 0);
+  const liquidityUsd = account.liquidityUsd ?? account.liquidity;
+  const availableToBorrow = account.availableToBorrow ?? 0;
+  const summary = buildSummary(account.positions, liquidityUsd);
+  const hasLiquidity = typeof liquidityUsd === 'number' && Number.isFinite(liquidityUsd) && liquidityUsd > 0;
+  const showEnterMarkets = supplyPositions.length > 0 && Boolean(comptrollerAddress) && Boolean(onRefetch) && !hasLiquidity;
+  const handleBorrowFromSupplyPosition = (position: UserPosition) => {
+    const market = markets.find((m) => m.market?.toLowerCase() === position.market?.toLowerCase());
+    if (market) onBorrow(market);
+  };
+  const handleSupplyFromPosition = (position: UserPosition) => {
+    const market = markets.find((m) => m.market?.toLowerCase() === position.market?.toLowerCase());
+    if (market) onSupply(market);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Account Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 border border-slate-700">
-          <div className="text-gray-400 text-sm mb-1">Total Supplied</div>
-          <div className="text-2xl font-bold text-white">
-            ${account.totalSupplied.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-          </div>
+      <p className="text-zinc-500 text-sm">
+        Address: <span className="font-mono text-zinc-300">{shortAddress(account.account)}</span>
+      </p>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
+          <div className="text-zinc-500 text-xs mb-0.5">Total Supplied (USD)</div>
+          <div className="text-xl font-semibold text-white">{formatUsdAuto(summary.totalSupplied)}</div>
         </div>
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 border border-slate-700">
-          <div className="text-gray-400 text-sm mb-1">Total Borrowed</div>
-          <div className="text-2xl font-bold text-white">
-            ${account.totalBorrowed.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-          </div>
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
+          <div className="text-zinc-500 text-xs mb-0.5">Total Borrowed (USD)</div>
+          <div className="text-xl font-semibold text-white">{formatUsdAuto(summary.totalBorrowed)}</div>
         </div>
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 border border-slate-700">
-          <div className="text-gray-400 text-sm mb-1">Borrow Limit</div>
-          <div className="text-2xl font-bold text-white">
-            ${account.borrowLimit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-          </div>
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
+          <div className="text-zinc-500 text-xs mb-0.5">Borrow Limit</div>
+          <div className="text-xl font-semibold text-white">{formatUsdAuto(summary.borrowLimit)}</div>
         </div>
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 border border-slate-700">
-          <div className="text-gray-400 text-sm mb-1">Account Health</div>
-          <div className={`text-2xl font-bold ${account.isHealthy ? 'text-green-400' : 'text-red-400'}`}>
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
+          <div className="text-zinc-500 text-xs mb-0.5">Health</div>
+          <div
+            className={`text-xl font-semibold ${account.isHealthy ? 'text-emerald-400' : 'text-red-400'}`}
+          >
             {account.isHealthy ? 'Healthy' : 'At Risk'}
           </div>
         </div>
       </div>
 
-      {/* Supply Positions */}
-      {supplyPositions.length > 0 && (
-        <div>
-          <h3 className="text-xl font-bold mb-4">Supply Positions</h3>
-          <div className="bg-slate-800 rounded-lg overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-slate-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Asset</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Balance</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Value (USD)</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">APY</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Collateral Factor</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700">
-                {supplyPositions.map((position) => {
-                  const valueUSD = (position.supplyUnderlying * position.price) / 1e8;
-                  const balance = (position.supplyUnderlying / (10 ** position.decimals)).toFixed(4);
-                  
-                  return (
-                    <tr key={position.market} className="hover:bg-slate-750">
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-white">{position.symbol}</div>
-                      </td>
-                      <td className="px-6 py-4 text-right text-white">
-                        {balance}
-                      </td>
-                      <td className="px-6 py-4 text-right text-white">
-                        ${valueUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-6 py-4 text-right text-green-400">
-                        {(position.supplyAPY * 100).toFixed(2)}%
-                      </td>
-                      <td className="px-6 py-4 text-right text-gray-300">
-                        {(position.collateralFactor * 100).toFixed(0)}%
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => onWithdraw(position)}
-                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
-                        >
-                          Withdraw
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {showEnterMarkets && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
+            <span>Supply is not used as collateral yet. Enable it to borrow and show your limit.</span>
+            <button
+              type="button"
+              onClick={handleEnterMarkets}
+              disabled={entering}
+              className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+            >
+              {entering ? 'Processing...' : 'Enable as Collateral'}
+            </button>
           </div>
+          {enterMarketsError && (
+            <div className="rounded-lg border border-red-700/40 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+              {enterMarketsError}
+            </div>
+          )}
+          {enterMarketsSuccess && (
+            <div className="rounded-lg border border-emerald-700/40 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+              {enterMarketsSuccess}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Borrow Positions */}
+      {supplyPositions.length > 0 && (
+        <PositionTable
+          title="Supply Positions"
+          positions={supplyPositions}
+          markets={markets}
+          type="supply"
+          valueKey="supplyUnderlying"
+          apyKey="supplyRatePerYear"
+          onAction={onWithdraw}
+          actionLabel="Withdraw"
+          actionClass="bg-red-600/90 hover:bg-red-500 text-white"
+          onTertiaryAction={handleSupplyFromPosition}
+          tertiaryActionLabel="Supply"
+          tertiaryActionClass="bg-teal-600/90 hover:bg-teal-500 text-white"
+          onSecondaryAction={handleBorrowFromSupplyPosition}
+          secondaryActionLabel="Borrow"
+          secondaryActionClass="bg-amber-600/90 hover:bg-amber-500 text-white"
+          isSecondaryActionDisabled={() => availableToBorrow <= 0}
+        />
+      )}
+
       {borrowPositions.length > 0 && (
-        <div>
-          <h3 className="text-xl font-bold mb-4">Borrow Positions</h3>
-          <div className="bg-slate-800 rounded-lg overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-slate-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Asset</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Borrowed</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Value (USD)</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">APY</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700">
-                {borrowPositions.map((position) => {
-                  const valueUSD = (position.borrowBalance * position.price) / 1e8;
-                  const balance = (position.borrowBalance / (10 ** position.decimals)).toFixed(4);
-                  
-                  return (
-                    <tr key={position.market} className="hover:bg-slate-750">
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-white">{position.symbol}</div>
-                      </td>
-                      <td className="px-6 py-4 text-right text-white">
-                        {balance}
-                      </td>
-                      <td className="px-6 py-4 text-right text-white">
-                        ${valueUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-6 py-4 text-right text-yellow-400">
-                        {(position.borrowAPY * 100).toFixed(2)}%
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => onRepay(position)}
-                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
-                        >
-                          Repay
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <PositionTable
+          title="Borrow Positions"
+          positions={borrowPositions}
+          markets={markets}
+          type="borrow"
+          valueKey="borrowBalance"
+          apyKey="borrowRatePerYear"
+          onAction={onRepay}
+          actionLabel="Repay"
+          actionClass="bg-teal-600/90 hover:bg-teal-500 text-white"
+        />
+      )}
+
+      {supplyPositions.length === 0 && borrowPositions.length === 0 && (
+        <p className="text-zinc-500 text-sm text-center py-6">No supply or borrow positions yet</p>
       )}
     </div>
   );
-};
+}

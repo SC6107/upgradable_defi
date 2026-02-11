@@ -1,4 +1,5 @@
 import math
+import sys
 from decimal import Decimal, getcontext
 from typing import Any, Dict, List, Optional
 
@@ -7,6 +8,7 @@ from web3 import Web3
 SECONDS_PER_YEAR = 365 * 24 * 3600
 PRICE_DECIMALS = Decimal(10**8)
 WAD = Decimal(10**18)
+MAX_EXP_INPUT = math.log(sys.float_info.max)
 
 from .abi import load_abi
 from .config import RPC_URL, load_addresses
@@ -166,6 +168,47 @@ class ChainReader:
             return None
         return Decimal(str(amount)) * Decimal(str(price_usd))
 
+    def _safe_decimal_to_float(self, value: Optional[Decimal]) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            result = float(value)
+        except (OverflowError, ValueError):
+            return None
+        return result if math.isfinite(result) else None
+
+    def _apr_to_apy(self, apr: Optional[float]) -> Optional[float]:
+        if apr is None or not math.isfinite(apr):
+            return None
+        if apr > MAX_EXP_INPUT:
+            return None
+        return math.expm1(apr)
+
+    def _calculate_apr_apy(
+        self,
+        reward_rate: Optional[int],
+        total_staked: Optional[int],
+        rewards_decimals: Optional[int],
+        staking_decimals: Optional[int],
+    ) -> tuple[Optional[float], Optional[float]]:
+        if (
+            reward_rate is None
+            or total_staked is None
+            or total_staked <= 0
+            or rewards_decimals is None
+            or staking_decimals is None
+        ):
+            return None, None
+
+        rewards_per_year = Decimal(reward_rate) * SECONDS_PER_YEAR / (Decimal(10) ** rewards_decimals)
+        staked_value = Decimal(total_staked) / (Decimal(10) ** staking_decimals)
+        if staked_value <= 0:
+            return None, None
+
+        apr = self._safe_decimal_to_float(rewards_per_year / staked_value)
+        apy = self._apr_to_apy(apr)
+        return apr, apy
+
     def get_markets(self) -> List[Dict[str, Any]]:
         results = []
         for market in self.markets:
@@ -222,7 +265,7 @@ class ChainReader:
                     if rate_per_second is not None:
                         supply_rate_year = rate_per_second * seconds
 
-            utilization = None
+            utilization = 0.0
             if cash is not None and total_borrows is not None:
                 denom = cash + total_borrows - (total_reserves or 0)
                 if denom > 0:
@@ -385,6 +428,13 @@ class ChainReader:
         }
 
     def get_account(self, account: str) -> Dict[str, Any]:
+        """
+        Return account positions and health. All amounts are in human-readable units for the API:
+        - supplyUnderlying, borrowBalance: token amount (e.g. 100000.0)
+        - price, priceUsd: USD per token (e.g. 2000.0); oracle raw is divided by PRICE_DECIMALS (1e8)
+        - Value USD = supplyUnderlying * price (plain USD, e.g. 200000000)
+        """
+        account = (account or "").strip()
         checksum = self._checksum(account)
         if not checksum:
             raise ValueError("Invalid address")
@@ -402,7 +452,12 @@ class ChainReader:
             erc20 = self._get_erc20(underlying)
             symbol = self._call_fn(erc20, "symbol") if erc20 else None
             decimals = self._call_fn(erc20, "decimals") if erc20 else None
+            # Fallback to 18 (e.g. WETH) so borrow/supply amounts are not zeroed when ERC20 decimals fail
+            if decimals is None:
+                decimals = 18
             dtoken_decimals = self._call_fn(market, "decimals")
+            if dtoken_decimals is None:
+                dtoken_decimals = 18
 
             supply_dtoken_raw = self._call_fn(market, "balanceOf", checksum)
             borrow_balance_raw = self._call_fn(market, "borrowBalanceStored", checksum)
@@ -439,6 +494,15 @@ class ChainReader:
                 self._call_fn(market, "totalBorrows"),
                 self._call_fn(market, "totalReserves", default=0),
             )
+            # Ensure numbers for frontend: always float, never None (0 when conversion/chain fails)
+            supply_underlying_val = float(underlying_supply) if underlying_supply is not None else 0.0
+            borrow_balance_val = float(borrow_balance) if borrow_balance is not None else 0.0
+            supply_rate_dec = self._rate_to_decimal(supply_rate_raw)
+            borrow_rate_dec = self._rate_to_decimal(borrow_rate_raw)
+            supply_rate_float = self._to_float(supply_rate_dec, "0.0000000000000001")
+            borrow_rate_float = self._to_float(borrow_rate_dec, "0.0000000000000001")
+            supply_apr_pct = self._to_float(self._decimal_to_pct(supply_rate_dec), "0.0001")
+            borrow_apr_pct = self._to_float(self._decimal_to_pct(borrow_rate_dec), "0.0001")
             positions.append(
                 {
                     "market": market.address,
@@ -447,24 +511,23 @@ class ChainReader:
                     "decimals": decimals,
                     "dTokenDecimals": dtoken_decimals,
                     "supplyDToken": supply_dtoken,
-                    "supplyUnderlying": underlying_supply,
-                    "borrowBalance": borrow_balance,
-                    "exchangeRate": self._wad_to_float(exchange_rate, "0.000000000000000001"),
-                    "price": self._to_float(price_usd, "0.000001"),
-                    "priceUsd": self._to_float(price_usd, "0.000001"),
-                    "supplyRatePerYear": self._to_float(
-                        self._rate_to_decimal(supply_rate_raw), "0.0000000000000001"
-                    ),
-                    "borrowRatePerYear": self._to_float(
-                        self._rate_to_decimal(borrow_rate_raw), "0.0000000000000001"
-                    ),
-                    "collateralFactor": self._wad_to_float(collateral_factor, "0.0000000000000001"),
+                    "supplyUnderlying": supply_underlying_val,
+                    "borrowBalance": borrow_balance_val,
+                    "exchangeRate": self._wad_to_float(exchange_rate, "0.000000000000000001") or 0.0,
+                    "price": self._to_float(price_usd, "0.000001") or 0.0,
+                    "priceUsd": self._to_float(price_usd, "0.000001") or 0.0,
+                    "supplyRatePerYear": supply_rate_float if supply_rate_float is not None else 0.0,
+                    "borrowRatePerYear": borrow_rate_float if borrow_rate_float is not None else 0.0,
+                    "supplyAprPct": supply_apr_pct if supply_apr_pct is not None else 0.0,
+                    "borrowAprPct": borrow_apr_pct if borrow_apr_pct is not None else 0.0,
+                    "collateralFactor": self._wad_to_float(collateral_factor, "0.0000000000000001") or 0.0,
                     "isListed": is_listed,
                 }
             )
 
         total_collateral_usd = Decimal(0)
         total_borrow_usd = Decimal(0)
+        total_supply_usd = Decimal(0)
         for pos in positions:
             price_usd = pos.get("priceUsd", pos.get("price"))
             cf = pos.get("collateralFactor") or 0
@@ -472,6 +535,7 @@ class ChainReader:
             borrow_usd = self._token_to_usd_from_price_usd(pos.get("borrowBalance"), price_usd)
             if supply_usd is not None:
                 total_collateral_usd += supply_usd * Decimal(str(cf))
+                total_supply_usd += supply_usd
             if borrow_usd is not None:
                 total_borrow_usd += borrow_usd
 
@@ -489,6 +553,8 @@ class ChainReader:
             if shortfall is not None
             else None
         )
+        total_supplied_usd_float = self._to_float(total_supply_usd, "0.000001") or 0.0
+        total_borrowed_usd_float = self._to_float(total_borrow_usd, "0.000001") or 0.0
 
         return {
             "account": checksum,
@@ -499,6 +565,8 @@ class ChainReader:
             "isHealthy": shortfall == 0 if shortfall is not None else None,
             "healthFactor": health_factor,
             "positions": positions,
+            "totalSuppliedUsd": total_supplied_usd_float,
+            "totalBorrowedUsd": total_borrowed_usd_float,
         }
 
     def get_account_market(self, account: str, market_address: str) -> Dict[str, Any]:
@@ -646,6 +714,7 @@ class ChainReader:
                         "decimals": self._call_fn(rewards_erc20, "decimals") if rewards_erc20 else None,
                     }
 
+        addresses = load_addresses()
         return {
             "chainId": self.w3.eth.chain_id,
             "comptroller": self.comptroller.address if self.comptroller else None,
@@ -655,6 +724,36 @@ class ChainReader:
             "marketDetails": markets,
             "liquidityMiningDetails": liquidity_mining,
             "rewardTokens": list(reward_tokens.values()),
+            "governor": addresses.get("governor"),
+            "protocolTimelock": addresses.get("protocolTimelock"),
+        }
+
+    def get_protocol_upgrade_info(self) -> Dict[str, Any]:
+        """Return upgradeability info: UUPS pattern, timelock, and contract versions."""
+        versions: Dict[str, Any] = {}
+        if self.comptroller:
+            v = self._call_fn(self.comptroller, "version", default=None)
+            if v is not None:
+                versions["comptroller"] = int(v)
+        if self.price_oracle:
+            v = self._call_fn(self.price_oracle, "version", default=None)
+            if v is not None:
+                versions["priceOracle"] = int(v)
+        versions["markets"] = []
+        for i, market in enumerate(self.markets):
+            v = self._call_fn(market, "version", default=None)
+            versions["markets"].append({"index": i, "version": int(v) if v is not None else None})
+        versions["liquidityMining"] = []
+        for i, mining in enumerate(self.liquidity_mining):
+            v = self._call_fn(mining, "version", default=None)
+            versions["liquidityMining"].append({"index": i, "version": int(v) if v is not None else None})
+
+        return {
+            "upgradeable": True,
+            "pattern": "UUPS",
+            "description": "Protocol contracts use UUPS (EIP-1822) upgradeable proxies. Storage layout is preserved across upgrades via ERC-7201 namespaced storage.",
+            "timelockDelayHours": 24,
+            "contractVersions": versions,
         }
 
     def get_liquidity_mining(self) -> List[Dict[str, Any]]:
@@ -670,19 +769,12 @@ class ChainReader:
             reward_rate = self._call_fn(mining, "rewardRate")
             total_staked = self._call_fn(mining, "totalSupply")
 
-            apr = None
-            apy = None
-            if (
-                reward_rate is not None
-                and total_staked is not None
-                and total_staked > 0
-                and rewards_decimals is not None
-                and staking_decimals is not None
-            ):
-                rewards_per_year = Decimal(reward_rate) * SECONDS_PER_YEAR / Decimal(10**rewards_decimals)
-                staked_value = Decimal(total_staked) / Decimal(10**staking_decimals)
-                apr = float(rewards_per_year / staked_value)
-                apy = math.exp(apr) - 1
+            apr, apy = self._calculate_apr_apy(
+                reward_rate,
+                total_staked,
+                rewards_decimals,
+                staking_decimals,
+            )
 
             results.append(
                 {
@@ -726,19 +818,12 @@ class ChainReader:
             reward_rate = self._call_fn(mining, "rewardRate")
             total_staked = self._call_fn(mining, "totalSupply")
 
-            apr = None
-            apy = None
-            if (
-                reward_rate is not None
-                and total_staked is not None
-                and total_staked > 0
-                and rewards_decimals is not None
-                and staking_decimals is not None
-            ):
-                rewards_per_year = Decimal(reward_rate) * SECONDS_PER_YEAR / Decimal(10**rewards_decimals)
-                staked_value = Decimal(total_staked) / Decimal(10**staking_decimals)
-                apr = float(rewards_per_year / staked_value)
-                apy = math.exp(apr) - 1
+            apr, apy = self._calculate_apr_apy(
+                reward_rate,
+                total_staked,
+                rewards_decimals,
+                staking_decimals,
+            )
 
             results.append(
                 {

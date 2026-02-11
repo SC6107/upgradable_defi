@@ -1,10 +1,10 @@
 /**
  * Lending Web3 Service
- * Handles all blockchain interactions for lending operations
+ * Extends Web3Base with lending-specific blockchain operations.
  */
 import { ethers } from 'ethers';
+import { Web3Base, ERC20_ABI } from '@/shared/services/web3Base';
 
-// Contract ABIs
 const LENDING_TOKEN_ABI = [
   'function mint(uint256 mintAmount) external returns (uint256)',
   'function redeem(uint256 redeemTokens) external returns (uint256)',
@@ -22,15 +22,7 @@ const LENDING_TOKEN_ABI = [
   'function totalSupply() view returns (uint256)',
   'function totalBorrows() view returns (uint256)',
   'function getCash() view returns (uint256)',
-];
-
-const ERC20_ABI = [
-  'function approve(address spender, uint256 amount) external returns (bool)',
-  'function allowance(address owner, address spender) view returns (uint256)',
-  'function balanceOf(address owner) view returns (uint256)',
-  'function decimals() view returns (uint8)',
-  'function symbol() view returns (string)',
-  'function transfer(address to, uint256 amount) external returns (bool)',
+  'function liquidateBorrow(address borrower, uint256 repayAmount, address cTokenCollateral) external returns (uint256)',
 ];
 
 const COMPTROLLER_ABI = [
@@ -41,207 +33,245 @@ const COMPTROLLER_ABI = [
   'function markets(address) view returns (bool, uint256)',
 ];
 
-class LendingWeb3Service {
-  private provider: ethers.BrowserProvider | null = null;
-  private signer: ethers.JsonRpcSigner | null = null;
-  private account: string | null = null;
+class LendingWeb3Service extends Web3Base {
+  private formatComptrollerErrorCode(code: number): string {
+    const labels: Record<number, string> = {
+      0: 'NO_ERROR',
+      1: 'UNAUTHORIZED',
+      2: 'COMPTROLLER_MISMATCH',
+      3: 'INSUFFICIENT_SHORTFALL',
+      4: 'INSUFFICIENT_LIQUIDITY',
+      5: 'INVALID_CLOSE_FACTOR',
+      6: 'INVALID_COLLATERAL_FACTOR',
+      7: 'INVALID_LIQUIDATION_INCENTIVE',
+      8: 'MARKET_NOT_ENTERED',
+      9: 'MARKET_NOT_LISTED',
+      10: 'MARKET_ALREADY_LISTED',
+      11: 'MATH_ERROR',
+      12: 'NONZERO_BORROW_BALANCE',
+      13: 'PRICE_ERROR',
+      14: 'REJECTION',
+      15: 'TOO_MANY_ASSETS',
+      16: 'TOO_MUCH_REPAY',
+    };
+    return labels[code] ?? `UNKNOWN_${code}`;
+  }
 
-  /**
-   * Connect to wallet
-   */
-  async connect(): Promise<string> {
-    if (!window.ethereum) {
-      throw new Error('请安装 MetaMask 或其他兼容钱包');
+  async supply(
+    marketAddress: string,
+    amount: string,
+    underlyingAddress: string,
+  ): Promise<string> {
+    try {
+      if (!this.signer || !this.account) throw new Error('Wallet not connected');
+      await this.assertGasBalance(900000n);
+      await this.assertContractExists(underlyingAddress, 'Underlying token');
+      await this.assertContractExists(marketAddress, 'Lending market');
+
+      const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
+      const decimals = await underlyingContract.decimals();
+      const symbol = await underlyingContract.symbol().catch(() => 'token');
+      const amountWei = ethers.parseUnits(amount, decimals);
+      const walletBalance: bigint = await underlyingContract.balanceOf(this.account);
+
+      if (walletBalance < amountWei) {
+        throw new Error(
+          `Insufficient ${symbol} balance. Need ${ethers.formatUnits(amountWei, decimals)} ${symbol}, wallet has ${ethers.formatUnits(walletBalance, decimals)} ${symbol}.`
+        );
+      }
+
+      await this.ensureAllowance(underlyingAddress, marketAddress, amountWei);
+
+      const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
+      const mintTx = await lendingContract.mint(amountWei);
+      const receipt = await mintTx.wait();
+
+      return receipt.hash;
+    } catch (error) {
+      throw this.normalizeTxError(error, 'Supply transaction failed');
     }
-
-    this.provider = new ethers.BrowserProvider(window.ethereum);
-    this.signer = await this.provider.getSigner();
-    this.account = await this.signer.getAddress();
-
-    return this.account;
   }
 
-  /**
-   * Disconnect wallet
-   */
-  async disconnect(): Promise<void> {
-    this.provider = null;
-    this.signer = null;
-    this.account = null;
-  }
-
-  getAccount(): string | null {
-    return this.account;
-  }
-
-  getProvider(): ethers.BrowserProvider | null {
-    return this.provider;
-  }
-
-  getSigner(): ethers.JsonRpcSigner | null {
-    return this.signer;
-  }
-
-  /**
-   * Supply tokens to lending market
-   */
-  async supply(marketAddress: string, amount: string, underlyingAddress: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('钱包未连接');
-    }
-
-    // Approve underlying token
-    const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
-    const decimals = await underlyingContract.decimals();
-    const amountWei = ethers.parseUnits(amount, decimals);
-
-    // Check allowance
-    const allowance = await underlyingContract.allowance(this.account!, marketAddress);
-    if (allowance < amountWei) {
-      const approveTx = await underlyingContract.approve(marketAddress, ethers.MaxUint256);
-      await approveTx.wait();
-    }
-
-    // Mint lending tokens
-    const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
-    const mintTx = await lendingContract.mint(amountWei);
-    const receipt = await mintTx.wait();
-
-    return receipt.hash;
-  }
-
-  /**
-   * Withdraw tokens from lending market
-   */
   async withdraw(marketAddress: string, amount: string, isUnderlying: boolean = true): Promise<string> {
-    if (!this.signer) {
-      throw new Error('钱包未连接');
-    }
+    try {
+      if (!this.signer) throw new Error('Wallet not connected');
+      await this.assertGasBalance(350000n);
+      await this.assertContractExists(marketAddress, 'Lending market');
 
-    const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
-    
-    let tx;
-    if (isUnderlying) {
+      const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
+
+      let tx;
+      if (isUnderlying) {
+        const underlyingAddress = await lendingContract.underlying();
+        await this.assertContractExists(underlyingAddress, 'Underlying token');
+        const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
+        const decimals = await underlyingContract.decimals();
+        const amountWei = ethers.parseUnits(amount, decimals);
+        tx = await lendingContract.redeemUnderlying(amountWei);
+      } else {
+        const decimals = await lendingContract.decimals();
+        const amountWei = ethers.parseUnits(amount, decimals);
+        tx = await lendingContract.redeem(amountWei);
+      }
+
+      const receipt = await tx.wait();
+      return receipt.hash;
+    } catch (error) {
+      throw this.normalizeTxError(error, 'Withdraw transaction failed');
+    }
+  }
+
+  async borrow(marketAddress: string, amount: string): Promise<string> {
+    try {
+      if (!this.signer) throw new Error('Wallet not connected');
+      await this.assertGasBalance(350000n);
+      await this.assertContractExists(marketAddress, 'Lending market');
+
+      const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
       const underlyingAddress = await lendingContract.underlying();
+      await this.assertContractExists(underlyingAddress, 'Underlying token');
       const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
       const decimals = await underlyingContract.decimals();
       const amountWei = ethers.parseUnits(amount, decimals);
-      tx = await lendingContract.redeemUnderlying(amountWei);
-    } else {
-      const decimals = await lendingContract.decimals();
-      const amountWei = ethers.parseUnits(amount, decimals);
-      tx = await lendingContract.redeem(amountWei);
-    }
 
-    const receipt = await tx.wait();
-    return receipt.hash;
+      const borrowTx = await lendingContract.borrow(amountWei);
+      const receipt = await borrowTx.wait();
+
+      return receipt.hash;
+    } catch (error) {
+      throw this.normalizeTxError(error, 'Borrow transaction failed');
+    }
   }
 
-  /**
-   * Borrow tokens from lending market
-   */
-  async borrow(marketAddress: string, amount: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('钱包未连接');
-    }
-
-    const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
-    const underlyingAddress = await lendingContract.underlying();
-    const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
-    const decimals = await underlyingContract.decimals();
-    const amountWei = ethers.parseUnits(amount, decimals);
-
-    const borrowTx = await lendingContract.borrow(amountWei);
-    const receipt = await borrowTx.wait();
-
-    return receipt.hash;
-  }
-
-  /**
-   * Repay borrowed tokens
-   */
   async repay(marketAddress: string, amount: string, underlyingAddress: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('钱包未连接');
+    try {
+      if (!this.signer) throw new Error('Wallet not connected');
+      await this.assertGasBalance(700000n);
+      await this.assertContractExists(underlyingAddress, 'Underlying token');
+      await this.assertContractExists(marketAddress, 'Lending market');
+
+      const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
+      const decimals = await underlyingContract.decimals();
+      const amountWei = ethers.parseUnits(amount, decimals);
+
+      await this.ensureAllowance(underlyingAddress, marketAddress, amountWei);
+
+      const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
+      const repayTx = await lendingContract.repayBorrow(amountWei);
+      const receipt = await repayTx.wait();
+
+      return receipt.hash;
+    } catch (error) {
+      throw this.normalizeTxError(error, 'Repay transaction failed');
     }
-
-    const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
-    const decimals = await underlyingContract.decimals();
-    const amountWei = ethers.parseUnits(amount, decimals);
-
-    // Check allowance
-    const allowance = await underlyingContract.allowance(this.account!, marketAddress);
-    if (allowance < amountWei) {
-      const approveTx = await underlyingContract.approve(marketAddress, ethers.MaxUint256);
-      await approveTx.wait();
-    }
-
-    // Repay borrow
-    const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
-    const repayTx = await lendingContract.repayBorrow(amountWei);
-    const receipt = await repayTx.wait();
-
-    return receipt.hash;
   }
 
-  /**
-   * Enter markets (enable as collateral)
-   */
   async enterMarkets(comptrollerAddress: string, marketAddresses: string[]): Promise<string> {
-    if (!this.signer) {
-      throw new Error('钱包未连接');
+    try {
+      if (!this.signer) throw new Error('Wallet not connected');
+      await this.assertGasBalance(300000n);
+      await this.assertContractExists(comptrollerAddress, 'Comptroller');
+
+      const comptroller = new ethers.Contract(comptrollerAddress, COMPTROLLER_ABI, this.signer);
+      const dryRunResult: bigint[] = await comptroller.enterMarkets.staticCall(marketAddresses);
+      const failures = dryRunResult
+        .map((code, index) => ({ code: Number(code), index }))
+        .filter((item) => item.code !== 0);
+
+      if (failures.length > 0) {
+        const details = failures
+          .map(
+            ({ code, index }) =>
+              `${this.formatComptrollerErrorCode(code)} for market ${marketAddresses[index] ?? 'unknown'}`
+          )
+          .join('; ');
+        throw new Error(`Unable to enable collateral: ${details}`);
+      }
+
+      const tx = await comptroller.enterMarkets(marketAddresses);
+      const receipt = await tx.wait();
+
+      return receipt.hash;
+    } catch (error) {
+      throw this.normalizeTxError(error, 'Enter market transaction failed');
     }
-
-    const comptroller = new ethers.Contract(comptrollerAddress, COMPTROLLER_ABI, this.signer);
-    const tx = await comptroller.enterMarkets(marketAddresses);
-    const receipt = await tx.wait();
-
-    return receipt.hash;
   }
 
-  /**
-   * Exit market (disable as collateral)
-   */
   async exitMarket(comptrollerAddress: string, marketAddress: string): Promise<string> {
-    if (!this.signer) {
-      throw new Error('钱包未连接');
+    try {
+      if (!this.signer) throw new Error('Wallet not connected');
+      await this.assertGasBalance(300000n);
+      await this.assertContractExists(comptrollerAddress, 'Comptroller');
+      await this.assertContractExists(marketAddress, 'Lending market');
+
+      const comptroller = new ethers.Contract(comptrollerAddress, COMPTROLLER_ABI, this.signer);
+      const tx = await comptroller.exitMarket(marketAddress);
+      const receipt = await tx.wait();
+
+      return receipt.hash;
+    } catch (error) {
+      throw this.normalizeTxError(error, 'Exit market transaction failed');
     }
-
-    const comptroller = new ethers.Contract(comptrollerAddress, COMPTROLLER_ABI, this.signer);
-    const tx = await comptroller.exitMarket(marketAddress);
-    const receipt = await tx.wait();
-
-    return receipt.hash;
   }
 
-  /**
-   * Get user's underlying balance
-   */
   async getUnderlyingBalance(underlyingAddress: string): Promise<string> {
-    if (!this.signer || !this.account) {
-      throw new Error('钱包未连接');
+    try {
+      if (!this.signer || !this.account) throw new Error('Wallet not connected');
+      await this.assertContractExists(underlyingAddress, 'Underlying token');
+
+      const contract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
+      const balance = await contract.balanceOf(this.account);
+      const decimals = await contract.decimals();
+
+      return ethers.formatUnits(balance, decimals);
+    } catch (error) {
+      throw this.normalizeTxError(error, 'Failed to load underlying balance');
     }
-
-    const contract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
-    const balance = await contract.balanceOf(this.account);
-    const decimals = await contract.decimals();
-
-    return ethers.formatUnits(balance, decimals);
   }
 
-  /**
-   * Get user's lending token balance
-   */
   async getLendingTokenBalance(marketAddress: string): Promise<string> {
-    if (!this.signer || !this.account) {
-      throw new Error('钱包未连接');
+    try {
+      if (!this.signer || !this.account) throw new Error('Wallet not connected');
+      await this.assertContractExists(marketAddress, 'Lending market');
+
+      const contract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
+      const balance = await contract.balanceOf(this.account);
+      const decimals = await contract.decimals();
+
+      return ethers.formatUnits(balance, decimals);
+    } catch (error) {
+      throw this.normalizeTxError(error, 'Failed to load market balance');
     }
+  }
 
-    const contract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
-    const balance = await contract.balanceOf(this.account);
-    const decimals = await contract.decimals();
+  async liquidateBorrow(
+    repayCTokenAddress: string,
+    borrower: string,
+    repayAmount: string,
+    collateralCTokenAddress: string,
+    underlyingAddress: string
+  ): Promise<string> {
+    try {
+      if (!this.signer || !this.account) throw new Error('Wallet not connected');
+      await this.assertGasBalance(700000n);
+      await this.assertContractExists(underlyingAddress, 'Underlying token');
+      await this.assertContractExists(repayCTokenAddress, 'Repay market');
+      await this.assertContractExists(collateralCTokenAddress, 'Collateral market');
 
-    return ethers.formatUnits(balance, decimals);
+      const underlyingContract = new ethers.Contract(underlyingAddress, ERC20_ABI, this.signer);
+      const decimals = await underlyingContract.decimals();
+      const amountWei = ethers.parseUnits(repayAmount, decimals);
+
+      await this.ensureAllowance(underlyingAddress, repayCTokenAddress, amountWei);
+
+      const repayContract = new ethers.Contract(repayCTokenAddress, LENDING_TOKEN_ABI, this.signer);
+      const tx = await repayContract.liquidateBorrow(borrower, amountWei, collateralCTokenAddress);
+      const receipt = await tx.wait();
+
+      return receipt!.hash;
+    } catch (error) {
+      throw this.normalizeTxError(error, 'Liquidation transaction failed');
+    }
   }
 }
 

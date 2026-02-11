@@ -1,99 +1,33 @@
-import axios from 'axios';
+/**
+ * Mining API Service
+ * Uses the shared apiClient which normalizes snake_case keys to camelCase automatically.
+ */
+import apiClient from '@/shared/services/apiClient';
+import type {
+  Market,
+  Account,
+  Event,
+  ContractAddresses,
+  LiquidityMiningPool,
+  LiquidityMiningAccountSummary,
+} from '@/shared/types/mining';
+import type { HealthStatus } from '@/shared/types/common';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
-
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
-});
-
-export interface Market {
-  market: string;
-  underlying: string;
-  symbol: string;
-  decimals: number;
-  totalSupply: number;
-  totalBorrows: number;
-  totalReserves: number;
-  cash: number;
-  exchangeRate: number;
-  utilization: number;
-  borrowRatePerYear: number;
-  supplyRatePerYear: number;
-  price: number;
-  collateralFactor: number;
-  isListed: boolean;
-}
-
-export interface Position {
-  market: string;
-  underlying: string;
-  symbol: string;
-  decimals: number;
-  supplyDToken: number;
-  supplyUnderlying: number;
-  borrowBalance: number;
-  exchangeRate: number;
-  price: number;
-  collateralFactor: number;
-  isListed: boolean;
-}
-
-export interface Account {
-  account: string;
-  liquidity: number;
-  shortfall: number;
-  isHealthy: boolean;
-  positions: Position[];
-}
-
-export interface HealthStatus {
-  chainId: number;
-  latestBlock: number;
-  indexedToBlock: number;
-}
-
-export interface Event {
-  id: string;
-  contract: string;
-  event: string;
-  blockNumber: number;
-  transactionHash: string;
-  logIndex: number;
-  args: Record<string, any>;
-}
-
-export interface ContractAddressMarketDetail {
-  market: string;
-  underlying: string | null;
-  symbol: string | null;
-  decimals: number | null;
-}
-
-export interface ContractAddressLiquidityMiningDetail {
-  mining: string;
-  stakingToken: string | null;
-  stakingSymbol: string | null;
-  rewardsToken: string | null;
-  rewardsSymbol: string | null;
-}
-
-export interface ContractAddressRewardToken {
-  token: string;
-  symbol: string | null;
-  decimals: number | null;
-}
-
-export interface ContractAddresses {
-  chainId: number;
-  comptroller: string | null;
-  priceOracle: string | null;
-  markets: string[];
-  liquidityMining: string[];
-  marketDetails: ContractAddressMarketDetail[];
-  liquidityMiningDetails: ContractAddressLiquidityMiningDetail[];
-  rewardTokens: ContractAddressRewardToken[];
-}
+// Re-export types for existing consumers
+export type {
+  Market,
+  Position,
+  Account,
+  Event,
+  ContractAddressMarketDetail,
+  ContractAddressLiquidityMiningDetail,
+  ContractAddressRewardToken,
+  ContractAddresses,
+  LiquidityMiningPool,
+  LiquidityMiningAccountPosition,
+  LiquidityMiningAccountSummary,
+} from '@/shared/types/mining';
+export type { HealthStatus } from '@/shared/types/common';
 
 class APIService {
   async getHealth(): Promise<HealthStatus> {
@@ -103,7 +37,7 @@ class APIService {
 
   async getMarkets(): Promise<Market[]> {
     const response = await apiClient.get('/markets');
-    return response.data.items;
+    return response.data?.items ?? [];
   }
 
   async getAccount(address: string): Promise<Account> {
@@ -115,6 +49,16 @@ class APIService {
     const response = await apiClient.get('/contracts/addresses', {
       params: refresh ? { refresh: 'true' } : undefined,
     });
+    return response.data;
+  }
+
+  async getLiquidityMining(): Promise<LiquidityMiningPool[]> {
+    const response = await apiClient.get('/liquidity-mining');
+    return response.data.items ?? [];
+  }
+
+  async getLiquidityMiningAccount(address: string): Promise<LiquidityMiningAccountSummary> {
+    const response = await apiClient.get(`/liquidity-mining/${address}`);
     return response.data;
   }
 
@@ -141,7 +85,7 @@ class APIService {
     event?: string,
     fromBlock?: number,
     toBlock?: number
-  ): Promise<Record<string, any>> {
+  ): Promise<Record<string, unknown>> {
     const params = new URLSearchParams();
     if (contract) params.append('contract', contract);
     if (event) params.append('event', event);

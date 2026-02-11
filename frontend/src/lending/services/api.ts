@@ -1,66 +1,96 @@
 /**
  * Lending API Service
- * Handles all API calls for lending markets and user data
+ * Uses the shared apiClient which normalizes snake_case keys to camelCase automatically.
  */
-import axios from 'axios';
+import { getAddress } from 'ethers';
+import apiClient from '@/shared/services/apiClient';
 import type { LendingMarket, AccountData, TransactionEvent, UserPosition } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
-
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
-});
-
-interface HealthStatus {
-  chainId: number;
-  latestBlock: number;
-  indexedToBlock: number;
+function _num(v: unknown): number {
+  if (v == null) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
 class LendingAPIService {
-  /**
-   * Get system health status
-   */
-  async getHealth(): Promise<HealthStatus> {
+  async getHealth() {
     const response = await apiClient.get('/health');
     return response.data;
   }
 
-  /**
-   * Get all lending markets
-   */
   async getMarkets(): Promise<LendingMarket[]> {
     const response = await apiClient.get('/markets');
-    return response.data.items || [];
+    return response.data?.items ?? [];
   }
 
   /**
-   * Get account data including positions and health
+   * Get account data including positions and health.
+   * The interceptor guarantees camelCase keys; we just coerce numeric fields.
    */
   async getAccount(address: string): Promise<AccountData> {
-    const response = await apiClient.get(`/accounts/${address}`);
+    const checksummed = getAddress(address);
+    const response = await apiClient.get(`/accounts/${checksummed}`);
     const data = response.data;
-    
-    // Calculate additional metrics
-    const positions = data.positions || [];
-    const totalSupplied = positions.reduce((sum: number, pos: UserPosition) => {
-      return sum + (pos.supplyUnderlying * pos.price) / 1e8;
+    const rawPositions: Record<string, unknown>[] = data.positions || [];
+
+    const positions: UserPosition[] = rawPositions.map((pos) => {
+      const supplyUnderlying = _num(pos.supplyUnderlying);
+      const borrowBalance = _num(pos.borrowBalance);
+      const price = _num(pos.price ?? pos.priceUsd);
+      const supplyRatePerYear = _num(pos.supplyRatePerYear);
+      const borrowRatePerYear = _num(pos.borrowRatePerYear);
+      const supplyAprPct = _num(pos.supplyAprPct);
+      const borrowAprPct = _num(pos.borrowAprPct);
+      const collateralFactor = _num(pos.collateralFactor);
+      return {
+        ...pos,
+        supplyUnderlying,
+        borrowBalance,
+        price,
+        priceUsd: price,
+        supplyRatePerYear,
+        borrowRatePerYear,
+        supplyAprPct,
+        borrowAprPct,
+        collateralFactor,
+      } as unknown as UserPosition;
+    });
+
+    const totalSupplied =
+      typeof data.totalSuppliedUsd === 'number' && Number.isFinite(data.totalSuppliedUsd)
+        ? data.totalSuppliedUsd
+        : positions.reduce((sum: number, pos: UserPosition) => {
+            const price = pos.price ?? pos.priceUsd ?? 0;
+            return sum + (pos.supplyUnderlying ?? 0) * price;
+          }, 0);
+
+    const totalBorrowed =
+      typeof data.totalBorrowedUsd === 'number' && Number.isFinite(data.totalBorrowedUsd)
+        ? data.totalBorrowedUsd
+        : positions.reduce((sum: number, pos: UserPosition) => {
+            const price = pos.price ?? pos.priceUsd ?? 0;
+            return sum + (pos.borrowBalance ?? 0) * price;
+          }, 0);
+
+    const borrowLimitFromPositions = positions.reduce((sum: number, pos: UserPosition) => {
+      const price = pos.price ?? pos.priceUsd ?? 0;
+      const supplyValue = (pos.supplyUnderlying ?? 0) * price;
+      return sum + supplyValue * (pos.collateralFactor ?? 0);
     }, 0);
-    
-    const totalBorrowed = positions.reduce((sum: number, pos: UserPosition) => {
-      return sum + (pos.borrowBalance * pos.price) / 1e8;
-    }, 0);
-    
-    const borrowLimit = positions.reduce((sum: number, pos: UserPosition) => {
-      const supplyValue = (pos.supplyUnderlying * pos.price) / 1e8;
-      return sum + supplyValue * pos.collateralFactor;
-    }, 0);
-    
-    const availableToBorrow = Math.max(0, borrowLimit - totalBorrowed);
+
+    const liquidityUsd = data.liquidityUsd ?? data.liquidity;
+    const borrowLimit =
+      typeof liquidityUsd === 'number' && liquidityUsd > 0
+        ? totalBorrowed + liquidityUsd
+        : borrowLimitFromPositions;
+    const availableToBorrow =
+      typeof liquidityUsd === 'number' && liquidityUsd > 0
+        ? liquidityUsd
+        : Math.max(0, borrowLimit - totalBorrowed);
 
     return {
       ...data,
+      positions,
       totalSupplied,
       totalBorrowed,
       borrowLimit,
@@ -68,9 +98,6 @@ class LendingAPIService {
     };
   }
 
-  /**
-   * Get transaction events
-   */
   async getEvents(
     contract?: string,
     event?: string,
@@ -91,12 +118,14 @@ class LendingAPIService {
     return response.data.items || [];
   }
 
-  /**
-   * Get market statistics
-   */
   async getMarketStats(marketAddress: string): Promise<Record<string, unknown>> {
     const response = await apiClient.get(`/markets/${marketAddress}/stats`);
     return response.data;
+  }
+
+  async getContractAddresses(): Promise<{ comptroller?: string | null }> {
+    const response = await apiClient.get('/contracts/addresses');
+    return response.data ?? {};
   }
 }
 

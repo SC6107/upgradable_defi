@@ -1,215 +1,228 @@
-/**
- * Markets Table Component
- * Displays all available lending markets with supply/borrow actions
- */
-import React, { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { LendingMarket } from '../types';
+import { formatPct, getPrice, getMarketSupplyUsd, getSupplyApy, getBorrowApy } from '../utils';
 
-interface MarketsTableProps {
+type Props = {
   markets: LendingMarket[];
   loading: boolean;
-  onSupply: (market: LendingMarket) => void;
-  onBorrow: (market: LendingMarket) => void;
-}
+  error?: string | null;
+  onRetry?: () => void;
+  onSupply: (m: LendingMarket) => void;
+  onBorrow: (m: LendingMarket) => void;
+};
 
-export const MarketsTable: React.FC<MarketsTableProps> = ({
-  markets,
-  loading,
-  onSupply,
-  onBorrow,
-}) => {
-  const [sortBy, setSortBy] = useState<'symbol' | 'totalSupply' | 'supplyAPY' | 'borrowAPY'>('symbol');
-  const [sortDesc, setSortDesc] = useState(false);
+type SortKey = 'symbol' | 'totalSupplyUsd' | 'supplyAPY' | 'borrowAPY';
 
-  const handleSort = (key: typeof sortBy) => {
-    if (sortBy === key) {
-      setSortDesc(!sortDesc);
-    } else {
+export function MarketsTable({ markets, loading, error, onRetry, onSupply, onBorrow }: Props) {
+  const [sortBy, setSortBy] = useState<SortKey>('symbol');
+  const [desc, setDesc] = useState(true);
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+
+  const toggleSort = (key: SortKey) => {
+    if (sortBy === key) setDesc((d) => !d);
+    else {
       setSortBy(key);
-      setSortDesc(true);
+      setDesc(true);
     }
   };
 
-  const sortedMarkets = [...markets].sort((a, b) => {
-    let aVal: string | number;
-    let bVal: string | number;
-    
-    switch (sortBy) {
-      case 'symbol':
-        aVal = a.symbol;
-        bVal = b.symbol;
-        break;
-      case 'totalSupply':
-        aVal = (a.totalSupply * a.price) / (10 ** (a.decimals + 8));
-        bVal = (b.totalSupply * b.price) / (10 ** (b.decimals + 8));
-        break;
-      case 'supplyAPY':
-        aVal = a.supplyRatePerYear;
-        bVal = b.supplyRatePerYear;
-        break;
-      case 'borrowAPY':
-        aVal = a.borrowRatePerYear;
-        bVal = b.borrowRatePerYear;
-        break;
-      default:
-        return 0;
+  const handleCopyAddress = async (address?: string) => {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedAddress(address);
+      setTimeout(() => {
+        setCopiedAddress((prev) => (prev === address ? null : prev));
+      }, 1200);
+    } catch {
+      // Ignore clipboard failures (browser permissions/unsupported context).
     }
+  };
 
-    if (typeof aVal === 'string' && typeof bVal === 'string') {
-      return sortDesc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
-    }
-    return sortDesc ? (bVal as number) - (aVal as number) : (aVal as number) - (bVal as number);
-  });
+  const sorted = useMemo(() => {
+    return [...markets].sort((a, b) => {
+      const supplyA = getMarketSupplyUsd(a);
+      const supplyB = getMarketSupplyUsd(b);
+      const supplyAprA = getSupplyApy(a) ?? 0;
+      const supplyAprB = getSupplyApy(b) ?? 0;
+      const borrowAprA = getBorrowApy(a) ?? 0;
+      const borrowAprB = getBorrowApy(b) ?? 0;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mb-4"></div>
-          <p className="text-gray-400">Loading markets...</p>
-        </div>
-      </div>
-    );
-  }
+      let cmp = 0;
+      switch (sortBy) {
+        case 'symbol':
+          cmp = (a.symbol ?? '').localeCompare(b.symbol ?? '');
+          break;
+        case 'totalSupplyUsd':
+          cmp = supplyA - supplyB;
+          break;
+        case 'supplyAPY':
+          cmp = supplyAprA - supplyAprB;
+          break;
+        case 'borrowAPY':
+          cmp = borrowAprA - borrowAprB;
+          break;
+      }
+      return desc ? -cmp : cmp;
+    });
+  }, [markets, sortBy, desc]);
 
   if (markets.length === 0) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-400 text-lg">No markets available</p>
+      <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-12 text-center text-zinc-400 space-y-3">
+        {loading ? (
+          <div className="inline-flex items-center gap-2 text-zinc-300">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
+            Fetching markets...
+          </div>
+        ) : null}
+        {!loading && error ? <div className="text-red-300">{error}</div> : null}
+        {!loading && !error ? <div>No markets available</div> : null}
+        {onRetry ? (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-lg bg-zinc-700 px-3 py-1.5 text-sm text-white hover:bg-zinc-600"
+          >
+            Retry
+          </button>
+        ) : null}
       </div>
     );
   }
 
+  const hasData = markets.some((m) => m.symbol != null || m.totalSupply != null || getPrice(m) > 0);
+
+  const Th = ({
+    label,
+    keyName,
+    align = 'left',
+  }: {
+    label: string;
+    keyName: SortKey;
+    align?: 'left' | 'right';
+  }) => (
+    <th
+      className={`px-4 py-3 font-medium text-zinc-400 cursor-pointer hover:text-zinc-200 ${align === 'right' ? 'text-right' : 'text-left'}`}
+      onClick={() => toggleSort(keyName)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {sortBy === keyName && <span className="text-teal-400">{desc ? '↓' : '↑'}</span>}
+      </span>
+    </th>
+  );
+
   return (
-    <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-      <div className="overflow-x-auto">
+    <div className="space-y-3">
+      {loading && (
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 px-4 py-2 text-xs text-zinc-400 inline-flex items-center gap-2">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
+          Refreshing markets...
+        </div>
+      )}
+      {!loading && error && (
+        <div className="rounded-xl border border-red-700/50 bg-red-950/30 px-4 py-3 text-red-300 text-sm flex items-center justify-between gap-4">
+          <span>{error}</span>
+          {onRetry ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="shrink-0 rounded-lg bg-red-700 px-3 py-1.5 text-white hover:bg-red-600"
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
+      )}
+      {!hasData && (
+        <div className="rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
+          Chain data missing. Please ensure Anvil is running and contracts are deployed, then restart the backend.
+        </div>
+      )}
+      <div className="rounded-xl border border-zinc-700/80 overflow-hidden bg-zinc-900/60">
         <table className="w-full text-sm">
-          <thead className="bg-slate-900 border-b border-slate-700">
-            <tr>
-              <th
-                className="text-left px-6 py-4 font-semibold text-gray-300 cursor-pointer hover:text-white"
-                onClick={() => handleSort('symbol')}
-              >
-                <div className="flex items-center gap-2">
-                  Asset
-                  {sortBy === 'symbol' && (
-                    <span className="text-pink-500">{sortDesc ? '↓' : '↑'}</span>
-                  )}
-                </div>
-              </th>
-              <th
-                className="text-right px-6 py-4 font-semibold text-gray-300 cursor-pointer hover:text-white"
-                onClick={() => handleSort('totalSupply')}
-              >
-                <div className="flex items-center justify-end gap-2">
-                  Total Supply
-                  {sortBy === 'totalSupply' && (
-                    <span className="text-pink-500">{sortDesc ? '↓' : '↑'}</span>
-                  )}
-                </div>
-              </th>
-              <th className="text-right px-6 py-4 font-semibold text-gray-300">
-                Total Borrow
-              </th>
-              <th
-                className="text-right px-6 py-4 font-semibold text-gray-300 cursor-pointer hover:text-white"
-                onClick={() => handleSort('supplyAPY')}
-              >
-                <div className="flex items-center justify-end gap-2">
-                  Supply APY
-                  {sortBy === 'supplyAPY' && (
-                    <span className="text-pink-500">{sortDesc ? '↓' : '↑'}</span>
-                  )}
-                </div>
-              </th>
-              <th
-                className="text-right px-6 py-4 font-semibold text-gray-300 cursor-pointer hover:text-white"
-                onClick={() => handleSort('borrowAPY')}
-              >
-                <div className="flex items-center justify-end gap-2">
-                  Borrow APY
-                  {sortBy === 'borrowAPY' && (
-                    <span className="text-pink-500">{sortDesc ? '↓' : '↑'}</span>
-                  )}
-                </div>
-              </th>
-              <th className="text-right px-6 py-4 font-semibold text-gray-300">
-                Utilization
-              </th>
-              <th className="text-center px-6 py-4 font-semibold text-gray-300">
-                Actions
-              </th>
+          <thead>
+            <tr className="border-b border-zinc-700/80 bg-zinc-800/80">
+              <Th label="Asset" keyName="symbol" />
+              <Th label="Total Supply (USD)" keyName="totalSupplyUsd" align="right" />
+              <th className="px-4 py-3 text-right font-medium text-zinc-400">Total Borrows</th>
+              <Th label="Supply APY" keyName="supplyAPY" align="right" />
+              <Th label="Borrow APY" keyName="borrowAPY" align="right" />
+              <th className="px-4 py-3 text-right font-medium text-zinc-400">Utilization</th>
+              <th className="px-4 py-3 text-center font-medium text-zinc-400 w-40">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-700">
-            {sortedMarkets.map((market) => {
-              const totalSupplyUSD = (market.totalSupply * market.price) / (10 ** (market.decimals + 8));
-              const totalBorrowsUSD = (market.totalBorrows * market.price) / (10 ** (market.decimals + 8));
-              const supplyAPY = (market.supplyRatePerYear * 100).toFixed(2);
-              const borrowAPY = (market.borrowRatePerYear * 100).toFixed(2);
-              const utilization = (market.utilization * 100).toFixed(2);
+          <tbody className="divide-y divide-zinc-700/60">
+            {sorted.map((m) => {
+              const price = getPrice(m);
+              const totalBorrows = m.totalBorrows ?? (m as { totalBorrowsUnderlying?: number }).totalBorrowsUnderlying ?? 0;
+              const supplyUsd = getMarketSupplyUsd(m);
+              const borrowsUsd = (m as { totalBorrowsUsd?: number }).totalBorrowsUsd ?? totalBorrows * price;
+              const supplyApr = getSupplyApy(m);
+              const borrowApr = getBorrowApy(m);
+              const util = (m.utilization ?? 0) * 100;
+              const symbol = m.symbol ?? '—';
+              const abbr = symbol.length >= 2 ? symbol.slice(0, 2) : (m.market?.slice(2, 4) ?? '—');
+              const tokenAddress = m.underlying || m.market;
 
               return (
-                <tr key={market.market} className="hover:bg-slate-750">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 flex-shrink-0 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                        {market.symbol.substring(0, 2)}
+                <tr key={m.market ?? symbol} className="hover:bg-zinc-800/50">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-teal-500/20 flex items-center justify-center text-teal-400 font-semibold text-sm">
+                        {abbr}
                       </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-white">
-                          {market.symbol}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          {market.market.substring(0, 8)}...
+                      <div>
+                        <div className="font-medium text-white">{symbol}</div>
+                        <div className="inline-flex items-center gap-2 text-xs text-zinc-500">
+                          <span>{tokenAddress?.slice(0, 10)}...</span>
+                          {tokenAddress ? (
+                            <button
+                              type="button"
+                              onClick={() => handleCopyAddress(tokenAddress)}
+                              className="rounded bg-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-600"
+                              title={tokenAddress}
+                            >
+                              {copiedAddress === tokenAddress ? 'Copied' : 'Copy'}
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <div className="text-sm text-white">
-                      ${totalSupplyUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                    </div>
+                  <td className="px-4 py-3 text-right text-zinc-200">
+                    ${supplyUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <div className="text-sm text-white">
-                      ${totalBorrowsUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                    </div>
+                  <td className="px-4 py-3 text-right text-zinc-200">
+                    ${borrowsUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <span className="text-sm font-medium text-green-400">
-                      {supplyAPY}%
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <span className="text-sm font-medium text-yellow-400">
-                      {borrowAPY}%
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                  <td className="px-4 py-3 text-right text-emerald-400">{formatPct(supplyApr ?? undefined)}%</td>
+                  <td className="px-4 py-3 text-right text-amber-400">{formatPct(borrowApr ?? undefined)}%</td>
+                  <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <div className="w-16 bg-slate-700 rounded-full h-2">
+                      <div className="w-14 h-1.5 rounded-full bg-zinc-700 overflow-hidden">
                         <div
-                          className="bg-blue-500 h-2 rounded-full"
-                          style={{ width: `${Math.min(100, parseFloat(utilization))}%` }}
-                        ></div>
+                          className="h-full rounded-full bg-teal-500/80"
+                          style={{ width: `${Math.min(100, util)}%` }}
+                        />
                       </div>
-                      <span className="text-sm text-gray-300 w-12">
-                        {utilization}%
-                      </span>
+                      <span className="text-zinc-400 w-10">{util.toFixed(1)}%</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                  <td className="px-4 py-3">
                     <div className="flex gap-2 justify-center">
                       <button
-                        onClick={() => onSupply(market)}
-                        className="px-3 py-1 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white text-sm rounded-lg transition-colors font-medium"
+                        type="button"
+                        onClick={() => onSupply(m)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-600/90 hover:bg-teal-500 text-white transition-colors"
                       >
                         Supply
                       </button>
                       <button
-                        onClick={() => onBorrow(market)}
-                        className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors font-medium"
+                        type="button"
+                        onClick={() => onBorrow(m)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-600 hover:bg-zinc-500 text-white transition-colors"
                       >
                         Borrow
                       </button>
@@ -223,4 +236,4 @@ export const MarketsTable: React.FC<MarketsTableProps> = ({
       </div>
     </div>
   );
-};
+}
