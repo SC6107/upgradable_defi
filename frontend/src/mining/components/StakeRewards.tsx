@@ -10,6 +10,7 @@ import { ethers } from 'ethers';
 import API from '../services/api';
 import Web3Service from '../services/web3';
 import { TARGET_NETWORK } from '@/config/network';
+import type { TxSubmittedInfo } from '@/shared/services/web3Base';
 import type {
   LiquidityMiningAccountSummary,
   LiquidityMiningPool,
@@ -78,6 +79,7 @@ export function StakeRewards({
   const [withdrawAmounts, setWithdrawAmounts] = useState<Record<string, string>>({});
   const [walletStakingBalances, setWalletStakingBalances] = useState<Record<string, number | null>>({});
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [processingTx, setProcessingTx] = useState<TxSubmittedInfo | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -148,6 +150,7 @@ export function StakeRewards({
     setPendingAction(actionKey);
     setError(null);
     setNotice(null);
+    setProcessingTx(null);
 
     try {
       const result = await run();
@@ -167,6 +170,7 @@ export function StakeRewards({
         message,
       });
     } finally {
+      setProcessingTx(null);
       setPendingAction(null);
     }
   }, [fetchData, onSuccess]);
@@ -176,7 +180,7 @@ export function StakeRewards({
     if (!isPositiveNumber(amount)) return;
 
     await runAction(`stake:${pool.mining}`, async () => {
-      const txHash = await Web3Service.stake(pool.mining, amount);
+      const txHash = await Web3Service.stake(pool.mining, amount, setProcessingTx);
       setStakeAmounts((prev) => ({ ...prev, [pool.mining]: '' }));
       return {
         title: 'Stake submitted',
@@ -191,7 +195,7 @@ export function StakeRewards({
     if (!isPositiveNumber(amount)) return;
 
     await runAction(`withdraw:${pool.mining}`, async () => {
-      const txHash = await Web3Service.withdraw(pool.mining, amount);
+      const txHash = await Web3Service.withdraw(pool.mining, amount, setProcessingTx);
       setWithdrawAmounts((prev) => ({ ...prev, [pool.mining]: '' }));
       return {
         title: 'Withdraw submitted',
@@ -205,7 +209,7 @@ export function StakeRewards({
     const position = getPosition(pool.mining);
     const earnedAmount = position?.earned ?? 0;
     await runAction(`claim:${pool.mining}`, async () => {
-      const txHash = await Web3Service.getReward(pool.mining);
+      const txHash = await Web3Service.getReward(pool.mining, setProcessingTx);
       return {
         title: 'Rewards claimed',
         message: `Claimed ${formatToken(earnedAmount, 6)} ${pool.rewardsSymbol ?? 'GOV'} rewards.`,
@@ -216,7 +220,7 @@ export function StakeRewards({
 
   const handleExit = async (pool: LiquidityMiningPool) => {
     await runAction(`exit:${pool.mining}`, async () => {
-      const txHash = await Web3Service.exit(pool.mining);
+      const txHash = await Web3Service.exit(pool.mining, setProcessingTx);
       return {
         title: 'Exit submitted',
         message: 'Withdrawn all staked tokens and claimed rewards.',
@@ -491,6 +495,30 @@ export function StakeRewards({
           );
         })}
       </div>
+
+      {processingTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-600 bg-slate-900/95 p-5 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-500 border-t-sky-400" />
+              <p className="text-sm font-semibold text-sky-300">Transaction processing</p>
+            </div>
+            <p className="mt-3 text-sm text-slate-200">
+              {processingTx.stage === 'approval'
+                ? 'Signed approval. Waiting for confirmation on chain...'
+                : 'Signed in MetaMask. Waiting for confirmation on chain...'}
+            </p>
+            <a
+              href={`${TARGET_NETWORK.explorerUrl ?? 'https://sepolia.etherscan.io'}/tx/${processingTx.hash}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 block break-all font-mono text-xs text-sky-300 underline hover:text-sky-200"
+            >
+              {processingTx.hash}
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

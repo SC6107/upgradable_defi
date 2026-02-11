@@ -3,7 +3,7 @@
  * Extends Web3Base with mining-specific blockchain operations.
  */
 import { ethers } from 'ethers';
-import { Web3Base, ERC20_ABI } from '@/shared/services/web3Base';
+import { Web3Base, ERC20_ABI, type TxSubmittedHandler } from '@/shared/services/web3Base';
 import API from './api';
 
 const LENDING_TOKEN_ABI = [
@@ -81,7 +81,12 @@ class MiningWeb3Service extends Web3Base {
     return { amountBN, decimals };
   }
 
-  async supply(marketAddress: string, amount: string, underlyingAddress: string): Promise<string> {
+  async supply(
+    marketAddress: string,
+    amount: string,
+    underlyingAddress: string,
+    onSubmitted?: TxSubmittedHandler
+  ): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
     const { amountBN, decimals } = await this.parseTokenAmount(underlyingAddress, amount, 'Supply');
@@ -93,10 +98,13 @@ class MiningWeb3Service extends Web3Base {
       throw new Error(`Insufficient balance. You have ${ethers.formatUnits(balance, decimals)} tokens`);
     }
 
-    await this.ensureAllowance(underlyingAddress, marketAddress, amountBN);
+    await this.ensureAllowance(underlyingAddress, marketAddress, amountBN, onSubmitted);
 
     const tx = await marketContract.mint(amountBN);
-    await tx.wait();
+    await this.waitForTx(tx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Supply submitted',
+    });
 
     return tx.hash;
   }
@@ -105,7 +113,8 @@ class MiningWeb3Service extends Web3Base {
     miningAddress: string,
     marketAddress: string,
     underlyingAddress: string,
-    amount: string
+    amount: string,
+    onSubmitted?: TxSubmittedHandler
   ): Promise<SupplyAndStakeResult> {
     if (!this.signer || !this.account || !this.provider) throw new Error('Wallet not connected');
 
@@ -139,10 +148,13 @@ class MiningWeb3Service extends Web3Base {
 
     const stakingBalanceBefore: bigint = await stakingContract.balanceOf(this.account);
 
-    await this.ensureAllowance(underlyingAddress, marketAddress, amountBN);
+    await this.ensureAllowance(underlyingAddress, marketAddress, amountBN, onSubmitted);
 
     const supplyTx = await marketContract.mint(amountBN);
-    await supplyTx.wait();
+    await this.waitForTx(supplyTx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Supply submitted',
+    });
 
     const stakingBalanceAfter: bigint = await stakingContract.balanceOf(this.account);
     const minted = stakingBalanceAfter - stakingBalanceBefore;
@@ -150,10 +162,13 @@ class MiningWeb3Service extends Web3Base {
       throw new Error('Supply succeeded but no staking tokens were minted');
     }
 
-    await this.ensureAllowance(stakingToken, miningAddress, minted);
+    await this.ensureAllowance(stakingToken, miningAddress, minted, onSubmitted);
 
     const stakeTx = await miningContract.stake(minted);
-    await stakeTx.wait();
+    await this.waitForTx(stakeTx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Stake submitted',
+    });
 
     return {
       supplyTxHash: supplyTx.hash,
@@ -162,45 +177,59 @@ class MiningWeb3Service extends Web3Base {
     };
   }
 
-  async redeem(marketAddress: string, amount: string): Promise<string> {
+  async redeem(marketAddress: string, amount: string, onSubmitted?: TxSubmittedHandler): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
     const amountBN = ethers.parseUnits(amount, 18);
     const marketContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
 
     const tx = await marketContract.redeem(amountBN);
-    await tx.wait();
+    await this.waitForTx(tx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Redeem submitted',
+    });
 
     return tx.hash;
   }
 
-  async borrow(marketAddress: string, amount: string): Promise<string> {
+  async borrow(marketAddress: string, amount: string, onSubmitted?: TxSubmittedHandler): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
     const amountBN = ethers.parseUnits(amount, 18);
     const marketContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
 
     const tx = await marketContract.borrow(amountBN);
-    await tx.wait();
+    await this.waitForTx(tx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Borrow submitted',
+    });
 
     return tx.hash;
   }
 
-  async repay(marketAddress: string, amount: string, underlyingAddress: string): Promise<string> {
+  async repay(
+    marketAddress: string,
+    amount: string,
+    underlyingAddress: string,
+    onSubmitted?: TxSubmittedHandler
+  ): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
     const amountBN = ethers.parseUnits(amount, 18);
     const marketContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
 
-    await this.ensureAllowance(underlyingAddress, marketAddress, amountBN);
+    await this.ensureAllowance(underlyingAddress, marketAddress, amountBN, onSubmitted);
 
     const tx = await marketContract.repayBorrow(amountBN);
-    await tx.wait();
+    await this.waitForTx(tx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Repay submitted',
+    });
 
     return tx.hash;
   }
 
-  async enterMarkets(markets: string[]): Promise<string> {
+  async enterMarkets(markets: string[], onSubmitted?: TxSubmittedHandler): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
     const contracts = await API.getContractAddresses();
@@ -212,27 +241,33 @@ class MiningWeb3Service extends Web3Base {
     const comptrollerContract = new ethers.Contract(comptrollerAddress, COMPTROLLER_ABI, this.signer);
 
     const tx = await comptrollerContract.enterMarkets(markets);
-    await tx.wait();
+    await this.waitForTx(tx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Enter markets submitted',
+    });
 
     return tx.hash;
   }
 
-  async stake(miningAddress: string, amount: string): Promise<string> {
+  async stake(miningAddress: string, amount: string, onSubmitted?: TxSubmittedHandler): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
     const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
     const stakingToken: string = await miningContract.stakingToken();
     const { amountBN } = await this.parseTokenAmount(stakingToken, amount, 'Stake');
 
-    await this.ensureAllowance(stakingToken, miningAddress, amountBN);
+    await this.ensureAllowance(stakingToken, miningAddress, amountBN, onSubmitted);
 
     const tx = await miningContract.stake(amountBN);
-    await tx.wait();
+    await this.waitForTx(tx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Stake submitted',
+    });
 
     return tx.hash;
   }
 
-  async withdraw(miningAddress: string, amount: string): Promise<string> {
+  async withdraw(miningAddress: string, amount: string, onSubmitted?: TxSubmittedHandler): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
     const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
@@ -240,26 +275,35 @@ class MiningWeb3Service extends Web3Base {
     const { amountBN } = await this.parseTokenAmount(stakingToken, amount, 'Withdraw');
 
     const tx = await miningContract.withdraw(amountBN);
-    await tx.wait();
+    await this.waitForTx(tx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Withdraw submitted',
+    });
 
     return tx.hash;
   }
 
-  async getReward(miningAddress: string): Promise<string> {
+  async getReward(miningAddress: string, onSubmitted?: TxSubmittedHandler): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
     const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
     const tx = await miningContract.getReward();
-    await tx.wait();
+    await this.waitForTx(tx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Claim submitted',
+    });
     return tx.hash;
   }
 
-  async exit(miningAddress: string): Promise<string> {
+  async exit(miningAddress: string, onSubmitted?: TxSubmittedHandler): Promise<string> {
     if (!this.signer) throw new Error('Wallet not connected');
 
     const miningContract = new ethers.Contract(miningAddress, LIQUIDITY_MINING_ABI, this.signer);
     const tx = await miningContract.exit();
-    await tx.wait();
+    await this.waitForTx(tx, onSubmitted, {
+      stage: 'transaction',
+      label: 'Exit submitted',
+    });
     return tx.hash;
   }
 

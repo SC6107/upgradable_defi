@@ -13,6 +13,16 @@ export const ERC20_ABI = [
   'function transfer(address to, uint256 amount) external returns (bool)',
 ];
 
+export type TxSubmittedStage = 'approval' | 'transaction';
+
+export interface TxSubmittedInfo {
+  hash: string;
+  stage: TxSubmittedStage;
+  label: string;
+}
+
+export type TxSubmittedHandler = (info: TxSubmittedInfo) => void;
+
 export class Web3Base {
   protected provider: ethers.BrowserProvider | null = null;
   protected signer: ethers.JsonRpcSigner | null = null;
@@ -169,6 +179,19 @@ export class Web3Base {
     }
   }
 
+  protected async waitForTx(
+    tx: ethers.TransactionResponse,
+    onSubmitted?: TxSubmittedHandler,
+    submitted?: { stage?: TxSubmittedStage; label?: string }
+  ): Promise<void> {
+    onSubmitted?.({
+      hash: tx.hash,
+      stage: submitted?.stage ?? 'transaction',
+      label: submitted?.label ?? 'Transaction submitted',
+    });
+    await tx.wait();
+  }
+
   /**
    * Ensure the spender has sufficient allowance for the given amount.
    * If not, sends an approve(MaxUint256) transaction and waits for confirmation.
@@ -176,7 +199,8 @@ export class Web3Base {
   async ensureAllowance(
     tokenAddress: string,
     spender: string,
-    amount: bigint
+    amount: bigint,
+    onSubmitted?: TxSubmittedHandler
   ): Promise<void> {
     if (!this.signer || !this.account) {
       throw new Error('Wallet not connected');
@@ -190,7 +214,10 @@ export class Web3Base {
 
     try {
       const tx = await token.approve(spender, ethers.MaxUint256);
-      await tx.wait();
+      await this.waitForTx(tx, onSubmitted, {
+        stage: 'approval',
+        label: 'Approval submitted',
+      });
       return;
     } catch (error) {
       const raw = this.extractErrorMessage(error).toLowerCase();
@@ -202,10 +229,16 @@ export class Web3Base {
     try {
       if (allowance > 0n) {
         const resetTx = await token.approve(spender, 0n, { gasLimit: 120000n });
-        await resetTx.wait();
+        await this.waitForTx(resetTx, onSubmitted, {
+          stage: 'approval',
+          label: 'Approval reset submitted',
+        });
       }
       const retryTx = await token.approve(spender, amount, { gasLimit: 200000n });
-      await retryTx.wait();
+      await this.waitForTx(retryTx, onSubmitted, {
+        stage: 'approval',
+        label: 'Approval submitted',
+      });
     } catch (error) {
       throw this.normalizeTxError(error, 'Token approval failed');
     }
