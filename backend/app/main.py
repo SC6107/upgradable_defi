@@ -102,6 +102,7 @@ def get_markets():
 @app.get("/accounts/{address}", tags=["Accounts"], summary="Get account positions")
 def get_account(address: str, market: Optional[str] = Query(None, description="Filter by market contract address")):
     """Return a user's positions across all markets, or a single market if specified."""
+    address = (address or "").strip()
     chain = getattr(app.state, "chain", None)
     if not chain:
         raise HTTPException(status_code=500, detail="Chain reader not initialized")

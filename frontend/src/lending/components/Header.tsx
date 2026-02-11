@@ -1,138 +1,72 @@
-/**
- * Header Component
- * Navigation and wallet connection for lending app
- */
-import React from 'react';
+import { NavLink } from 'react-router-dom';
+import { shortAddress } from '../utils';
 
-interface HeaderProps {
+type Props = {
   account: string | null;
   isConnected: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
-  activeTab: 'markets' | 'positions' | 'liquidate';
-  setActiveTab: (tab: 'markets' | 'positions' | 'liquidate') => void;
-}
+};
 
-export const Header: React.FC<HeaderProps> = ({
-  account,
-  isConnected,
-  onConnect,
-  onDisconnect,
-  activeTab,
-  setActiveTab,
-}) => {
-  const formatAddress = (addr: string) => {
-    return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
-  };
+const TABS: { path: string; label: string }[] = [
+  { path: '/lending/markets', label: 'Markets' },
+  { path: '/lending/positions', label: 'Positions' },
+];
 
+export function Header({ account, isConnected, onConnect, onDisconnect }: Props) {
   return (
-    <header className="bg-gradient-to-b from-slate-800 to-slate-900 border-b border-slate-700 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
-              <span className="text-white font-bold text-lg">💰</span>
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">
-              DeFi Lending
-            </h1>
+    <header className="sticky top-0 z-50 border-b border-zinc-700/80 bg-zinc-900/95 backdrop-blur">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+        <NavLink to="/lending/markets" className="flex items-center gap-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-500/20 text-teal-400 font-semibold">
+            ◈
           </div>
+          <span className="text-lg font-semibold text-white">Lending</span>
+        </NavLink>
 
-          {/* Navigation */}
-          <nav className="hidden md:flex gap-1">
-            <button
-              onClick={() => setActiveTab('markets')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === 'markets'
-                  ? 'text-white bg-slate-700'
-                  : 'text-gray-400 hover:text-white hover:bg-slate-800'
-              }`}
+        <nav className="flex gap-0.5">
+          {TABS.map(({ path, label }) => (
+            <NavLink
+              key={path}
+              to={path}
+              end
+              className={({ isActive }) =>
+                `rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  isActive ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                }`
+              }
             >
-              Markets
-            </button>
-            <button
-              onClick={() => setActiveTab('positions')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === 'positions'
-                  ? 'text-white bg-slate-700'
-                  : 'text-gray-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              Positions
-            </button>
-            <button
-              onClick={() => setActiveTab('liquidate')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === 'liquidate'
-                  ? 'text-white bg-slate-700'
-                  : 'text-gray-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              Liquidate
-            </button>
-          </nav>
+              {label}
+            </NavLink>
+          ))}
+        </nav>
 
-          {/* Wallet Connection */}
-          <div>
-            {isConnected && account ? (
-              <div className="flex items-center gap-3">
-                <div className="hidden sm:block text-right">
-                  <p className="text-sm text-gray-400">Connected</p>
-                  <p className="text-sm font-semibold text-white">{formatAddress(account)}</p>
-                </div>
-                <button
-                  onClick={onDisconnect}
-                  className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium transition-colors"
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
+        <div>
+          {isConnected && account ? (
+            <div className="flex items-center gap-3">
+              <span className="hidden text-right sm:block">
+                <span className="block text-xs text-zinc-500">Connected</span>
+                <span className="font-mono text-sm text-zinc-200">{shortAddress(account)}</span>
+              </span>
               <button
-                onClick={onConnect}
-                className="px-6 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-medium transition-colors"
+                type="button"
+                onClick={onDisconnect}
+                className="rounded-lg bg-red-600/90 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
               >
-                Connect
+                Disconnect
               </button>
-            )}
-          </div>
-        </div>
-
-        {/* Mobile Navigation */}
-        <div className="md:hidden flex gap-1 pb-4 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('markets')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
-              activeTab === 'markets'
-                ? 'text-white bg-slate-700'
-                : 'text-gray-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            Markets
-          </button>
-          <button
-            onClick={() => setActiveTab('positions')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
-              activeTab === 'positions'
-                ? 'text-white bg-slate-700'
-                : 'text-gray-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            Positions
-          </button>
-          <button
-            onClick={() => setActiveTab('liquidate')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
-              activeTab === 'liquidate'
-                ? 'text-white bg-slate-700'
-                : 'text-gray-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            Liquidate
-          </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onConnect}
+              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-500"
+            >
+              Connect Wallet
+            </button>
+          )}
         </div>
       </div>
     </header>
   );
-};
+}
