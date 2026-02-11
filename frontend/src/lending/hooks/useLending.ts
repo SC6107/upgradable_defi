@@ -47,8 +47,7 @@ export const useAccount = (address: string | null) => {
   useEffect(() => {
     if (address) {
       fetchAccount();
-      const interval = setInterval(fetchAccount, 15000);
-      return () => clearInterval(interval);
+      return undefined;
     }
     setAccount(null);
     setLoading(false);

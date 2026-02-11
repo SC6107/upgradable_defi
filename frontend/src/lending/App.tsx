@@ -28,6 +28,7 @@ function LendingApp() {
   const [maxAmount, setMaxAmount] = useState('0');
   const [comptroller, setComptroller] = useState<string | null>(null);
   const [refetchError, setRefetchError] = useState<string | null>(null);
+  const [needsManualRefresh, setNeedsManualRefresh] = useState(false);
 
   const {
     markets,
@@ -63,10 +64,6 @@ function LendingApp() {
     setAction(a);
     setMaxAmount(max);
     setModalOpen(true);
-    // Pre-fetch comptroller address so enterMarketsIfNeeded has it cached
-    if (a === 'supply' && !comptroller) {
-      API.getContractAddresses().then((r) => setComptroller(r.comptroller ?? null)).catch(() => {});
-    }
   };
 
   const handleSupply = async (market: LendingMarket) => {
@@ -102,6 +99,7 @@ function LendingApp() {
     try {
       await refetchMarkets();
       if (account) await refetchAccount();
+      setNeedsManualRefresh(false);
     } catch (e) {
       setRefetchError(e instanceof Error ? e.message : 'Failed to refresh data');
     }
@@ -109,37 +107,8 @@ function LendingApp() {
 
   const handleModalSuccess = async () => {
     setRefetchError(null);
-    try {
-      // Wait for chain/RPC to reflect the new state
-      await new Promise((r) => setTimeout(r, 1500));
-      await refetchMarkets();
-      if (account) await refetchAccount();
-      if (action === 'supply' || action === 'borrow') navigate('/lending/positions');
-    } catch (e) {
-      setRefetchError(e instanceof Error ? e.message : 'Failed to refresh data');
-    }
-
-    // After supply: if borrow limit is still 0, enter markets so the user can borrow.
-    // This runs after the modal closes (fire-and-forget) so the user sees the success screen first.
-    if (action === 'supply' && account) {
-      enterMarketsIfNeeded(account).catch(() => {});
-    }
-  };
-
-  const enterMarketsIfNeeded = async (userAccount: string) => {
-    const fresh = await API.getAccount(userAccount).catch(() => null);
-    const liquidityUsd = fresh?.liquidityUsd ?? fresh?.liquidity;
-    const hasSupply = fresh?.positions?.some((p) => getPositionBalance(p, 'supplyUnderlying') > 0);
-    if (!hasSupply || (liquidityUsd != null && liquidityUsd > 0)) return;
-
-    const comp = comptroller ?? (await API.getContractAddresses().then((r) => r.comptroller ?? null).catch(() => null));
-    if (!comp || !fresh?.positions) return;
-
-    const marketsToEnter = fresh.positions.filter((p) => getPositionBalance(p, 'supplyUnderlying') > 0).map((p) => p.market);
-    if (marketsToEnter.length > 0) {
-      await Web3Service.enterMarkets(comp, marketsToEnter);
-      await refetchAccount();
-    }
+    setNeedsManualRefresh(true);
+    if (action === 'supply' || action === 'borrow') navigate('/lending/positions');
   };
 
   // TVL = sum of each market's total supply in USD (backend sends totalSupplyUsd in plain USD)
@@ -188,6 +157,18 @@ function LendingApp() {
               className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-500"
             >
               Refresh
+            </button>
+          </div>
+        )}
+        {needsManualRefresh && !refetchError && (
+          <div className="mb-4 flex items-center justify-between gap-4 rounded-xl border border-teal-700/50 bg-teal-950/30 px-4 py-3 text-teal-200 text-sm">
+            <span>Transaction submitted. Refresh when you want to fetch the latest balances and markets.</span>
+            <button
+              type="button"
+              onClick={refetch}
+              className="shrink-0 rounded-lg bg-teal-600 px-3 py-1.5 font-medium text-white hover:bg-teal-500"
+            >
+              Refresh now
             </button>
           </div>
         )}

@@ -106,7 +106,6 @@ export const useWallet = (web3Service: Web3ServiceLike) => {
             : Number.NaN;
       if (!Number.isFinite(nextChainId)) return;
       setChainId(nextChainId);
-      window.location.reload();
     };
 
     window.ethereum?.on?.('accountsChanged', handleAccountsChanged);
