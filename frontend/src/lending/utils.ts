@@ -1,4 +1,12 @@
-/** Shared helpers for lending UI. Backend returns human-readable numbers (price, supplyUnderlying, etc.). */
+/**
+ * Shared helpers for lending UI.
+ *
+ * Unit convention (API / backend):
+ * - Balance: human token amount (e.g. 100000 WETH)
+ * - Price: USD per token (e.g. 2000)
+ * - Value USD: balance × price, plain USD (e.g. 200000000)
+ * - Rates: decimal (0.05 = 5%) or percentage (5.25); formatPct handles both
+ */
 
 export function formatPct(value: number | undefined | null): string {
   const n = value != null ? Number(value) : 0;
@@ -8,6 +16,63 @@ export function formatPct(value: number | undefined | null): string {
 
 export function getPrice(p: { price?: number; priceUsd?: number }): number {
   return p.price ?? p.priceUsd ?? 0;
+}
+
+type RateSource = Record<string, unknown> & {
+  supplyRatePerYear?: number;
+  borrowRatePerYear?: number;
+  supplyAprPct?: number;
+  borrowAprPct?: number;
+  supplyAPY?: number;
+  borrowAPY?: number;
+  supply_rate_per_year?: number;
+  borrow_rate_per_year?: number;
+};
+
+/**
+ * Get supply APY from a market or position. Same field order as Markets table.
+ * Prefers supplyAprPct (percentage e.g. 5.25), then supplyRatePerYear (decimal e.g. 0.0525).
+ * Optional fallback: if item has no valid value, use marketFallback (e.g. for Positions using markets list).
+ */
+export function getSupplyApy(item: RateSource, marketFallback?: RateSource | null): number | undefined {
+  const raw =
+    item.supplyAprPct ??
+    item.supplyRatePerYear ??
+    item.supplyAPY ??
+    (item as Record<string, unknown>).supply_rate_per_year;
+  const n = raw != null ? Number(raw) : undefined;
+  if (n != null && Number.isFinite(n)) return n;
+  if (marketFallback) {
+    const fromM =
+      marketFallback.supplyAprPct ??
+      marketFallback.supplyRatePerYear ??
+      (marketFallback as Record<string, unknown>).supply_rate_per_year;
+    const nm = fromM != null ? Number(fromM) : undefined;
+    if (nm != null && Number.isFinite(nm)) return nm;
+  }
+  return undefined;
+}
+
+/**
+ * Get borrow APY from a market or position. Same field order as Markets table.
+ */
+export function getBorrowApy(item: RateSource, marketFallback?: RateSource | null): number | undefined {
+  const raw =
+    item.borrowAprPct ??
+    item.borrowRatePerYear ??
+    item.borrowAPY ??
+    (item as Record<string, unknown>).borrow_rate_per_year;
+  const n = raw != null ? Number(raw) : undefined;
+  if (n != null && Number.isFinite(n)) return n;
+  if (marketFallback) {
+    const fromM =
+      marketFallback.borrowAprPct ??
+      marketFallback.borrowRatePerYear ??
+      (marketFallback as Record<string, unknown>).borrow_rate_per_year;
+    const nm = fromM != null ? Number(fromM) : undefined;
+    if (nm != null && Number.isFinite(nm)) return nm;
+  }
+  return undefined;
 }
 
 /**
@@ -41,7 +106,16 @@ export function formatTvl(usd: number): string {
 }
 
 export function formatUsd(n: number): string {
-  return '$' + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const num = Number(n);
+  if (num == null || !Number.isFinite(num) || num < 0) return '$0.00';
+  return '$' + num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+/** Format USD: use millions (M) when >= 1e6, else plain USD. Input must be plain USD. */
+export function formatUsdAuto(usd: number): string {
+  const num = Number(usd);
+  if (num == null || !Number.isFinite(num) || num < 0) return '$0.00';
+  return num >= 1e6 ? formatTvl(num) : formatUsd(num);
 }
 
 export function shortAddress(addr: string): string {

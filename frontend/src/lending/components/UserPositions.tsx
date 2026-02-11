@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { AccountData, UserPosition, LendingMarket } from '../types';
-import { formatPct, getPrice, formatUsd, shortAddress, getPositionBalance } from '../utils';
+import { formatPct, getPrice, formatUsdAuto, shortAddress, getPositionBalance, getSupplyApy, getBorrowApy } from '../utils';
 import Web3Service from '../services/web3';
 
 type Props = {
@@ -50,11 +50,10 @@ function PositionTable({
   valueKey: 'supplyUnderlying' | 'borrowBalance';
   apyKey: 'supplyRatePerYear' | 'borrowRatePerYear';
 }) {
-  const getApy = (p: UserPosition) => {
-    const onPos = (p as Record<string, number>)[apyKey] ?? (p as Record<string, number>).supplyRatePerYear ?? (p as Record<string, number>).borrowRatePerYear ?? (p as Record<string, number>).supplyAPY ?? (p as Record<string, number>).borrowAPY;
-    if (onPos != null && Number.isFinite(onPos)) return onPos;
-    const m = markets?.find((x) => x.market?.toLowerCase() === p.market?.toLowerCase());
-    return m ? (m as Record<string, number>)[apyKey] : undefined;
+  // Same APY source as Markets: position first, then market fallback (getSupplyApy/getBorrowApy)
+  const getApy = (p: UserPosition): number | undefined => {
+    const m = markets?.find((x) => x.market?.toLowerCase() === p.market?.toLowerCase()) ?? null;
+    return apyKey === 'supplyRatePerYear' ? getSupplyApy(p, m) : getBorrowApy(p, m);
   };
 
   return (
@@ -65,8 +64,8 @@ function PositionTable({
           <thead>
             <tr className="border-b border-zinc-700/80 bg-zinc-800/80 text-zinc-400 text-left">
               <th className="px-4 py-3 font-medium">Asset</th>
-              <th className="px-4 py-3 text-right font-medium">Balance</th>
-              <th className="px-4 py-3 text-right font-medium">Value</th>
+              <th className="px-4 py-3 text-right font-medium">Balance (underlying)</th>
+              <th className="px-4 py-3 text-right font-medium">Value (USD)</th>
               <th className="px-4 py-3 text-right font-medium">APY</th>
               {type === 'supply' && (
                 <th className="px-4 py-3 text-right font-medium">Collateral</th>
@@ -76,17 +75,21 @@ function PositionTable({
           </thead>
           <tbody className="divide-y divide-zinc-700/60">
             {positions.map((p) => {
-              const balance = valueKey === 'supplyUnderlying' ? (p.supplyUnderlying ?? 0) : (p.borrowBalance ?? 0);
+              const balance = getPositionBalance(p, valueKey);
               const price = getPrice(p);
-              const value = balance * price;
-              const apy = getApy(p);
+              // Value USD = balance (human token) × price (USD per token); API uses human units
+              const valueUsd = Number.isFinite(balance) && Number.isFinite(price) ? balance * price : 0;
+              const apyRaw = getApy(p);
+              const apy = apyRaw != null && Number.isFinite(Number(apyRaw)) ? Number(apyRaw) : undefined;
+              const decimals = typeof (p as { decimals?: number }).decimals === 'number' ? (p as { decimals: number }).decimals : 4;
               return (
                 <tr key={p.market} className="hover:bg-zinc-800/50">
                   <td className="px-4 py-3 font-medium text-white">{p.symbol}</td>
                   <td className="px-4 py-3 text-right text-zinc-200">
-                    {balance.toFixed(4)}
+                    {Number.isFinite(balance) ? balance.toFixed(Math.min(decimals, 8)) : '0.0000'}{' '}
+                    <span className="text-zinc-500">{p.symbol}</span>
                   </td>
-                  <td className="px-4 py-3 text-right text-zinc-200">{formatUsd(value)}</td>
+                  <td className="px-4 py-3 text-right text-zinc-200">{formatUsdAuto(valueUsd)}</td>
                   <td className={`px-4 py-3 text-right ${type === 'supply' ? 'text-emerald-400' : 'text-amber-400'}`}>
                     {formatPct(apy)}%
                   </td>
@@ -194,15 +197,15 @@ export function UserPositions({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
           <div className="text-zinc-500 text-xs mb-0.5">Total Supplied (USD)</div>
-          <div className="text-xl font-semibold text-white">{formatUsd(summary.totalSupplied)}</div>
+          <div className="text-xl font-semibold text-white">{formatUsdAuto(summary.totalSupplied)}</div>
         </div>
         <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
           <div className="text-zinc-500 text-xs mb-0.5">Total Borrowed (USD)</div>
-          <div className="text-xl font-semibold text-white">{formatUsd(summary.totalBorrowed)}</div>
+          <div className="text-xl font-semibold text-white">{formatUsdAuto(summary.totalBorrowed)}</div>
         </div>
         <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
           <div className="text-zinc-500 text-xs mb-0.5">Borrow Limit</div>
-          <div className="text-xl font-semibold text-white">{formatUsd(summary.borrowLimit)}</div>
+          <div className="text-xl font-semibold text-white">{formatUsdAuto(summary.borrowLimit)}</div>
         </div>
         <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/60 p-4">
           <div className="text-zinc-500 text-xs mb-0.5">Health</div>

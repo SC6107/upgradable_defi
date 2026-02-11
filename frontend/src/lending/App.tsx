@@ -37,6 +37,11 @@ function LendingApp() {
     API.getContractAddresses().then((r) => setComptroller(r.comptroller ?? null)).catch(() => {});
   }, []);
 
+  // Refetch account when user switches to Positions tab so list is in sync with markets
+  useEffect(() => {
+    if (activeTab === 'positions' && account) refetchAccount();
+  }, [activeTab, account, refetchAccount]);
+
   const openModal = (market: LendingMarket, a: LendingAction, max: string) => {
     setSelectedMarket(market);
     setAction(a);
@@ -56,11 +61,11 @@ function LendingApp() {
     openModal(market, 'borrow', String(maxToken));
   };
   const handleWithdraw = (position: UserPosition) => {
-    const market = markets.find((m) => m.market === position.market);
+    const market = markets.find((m) => m.market?.toLowerCase() === position.market?.toLowerCase());
     if (market) openModal(market, 'withdraw', String(getPositionBalance(position, 'supplyUnderlying')));
   };
   const handleRepay = (position: UserPosition) => {
-    const market = markets.find((m) => m.market === position.market);
+    const market = markets.find((m) => m.market?.toLowerCase() === position.market?.toLowerCase());
     if (market) openModal(market, 'repay', String(getPositionBalance(position, 'borrowBalance')));
   };
 

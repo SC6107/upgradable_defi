@@ -385,6 +385,12 @@ class ChainReader:
         }
 
     def get_account(self, account: str) -> Dict[str, Any]:
+        """
+        Return account positions and health. All amounts are in human-readable units for the API:
+        - supplyUnderlying, borrowBalance: token amount (e.g. 100000.0)
+        - price, priceUsd: USD per token (e.g. 2000.0); oracle raw is divided by PRICE_DECIMALS (1e8)
+        - Value USD = supplyUnderlying * price (plain USD, e.g. 200000000)
+        """
         account = (account or "").strip()
         checksum = self._checksum(account)
         if not checksum:
@@ -403,7 +409,12 @@ class ChainReader:
             erc20 = self._get_erc20(underlying)
             symbol = self._call_fn(erc20, "symbol") if erc20 else None
             decimals = self._call_fn(erc20, "decimals") if erc20 else None
+            # Fallback to 18 (e.g. WETH) so borrow/supply amounts are not zeroed when ERC20 decimals fail
+            if decimals is None:
+                decimals = 18
             dtoken_decimals = self._call_fn(market, "decimals")
+            if dtoken_decimals is None:
+                dtoken_decimals = 18
 
             supply_dtoken_raw = self._call_fn(market, "balanceOf", checksum)
             borrow_balance_raw = self._call_fn(market, "borrowBalanceStored", checksum)
@@ -440,9 +451,15 @@ class ChainReader:
                 self._call_fn(market, "totalBorrows"),
                 self._call_fn(market, "totalReserves", default=0),
             )
-            # Ensure numbers for frontend (0 instead of None when conversion fails)
-            supply_underlying_val = underlying_supply if underlying_supply is not None else 0.0
-            borrow_balance_val = borrow_balance if borrow_balance is not None else 0.0
+            # Ensure numbers for frontend: always float, never None (0 when conversion/chain fails)
+            supply_underlying_val = float(underlying_supply) if underlying_supply is not None else 0.0
+            borrow_balance_val = float(borrow_balance) if borrow_balance is not None else 0.0
+            supply_rate_dec = self._rate_to_decimal(supply_rate_raw)
+            borrow_rate_dec = self._rate_to_decimal(borrow_rate_raw)
+            supply_rate_float = self._to_float(supply_rate_dec, "0.0000000000000001")
+            borrow_rate_float = self._to_float(borrow_rate_dec, "0.0000000000000001")
+            supply_apr_pct = self._to_float(self._decimal_to_pct(supply_rate_dec), "0.0001")
+            borrow_apr_pct = self._to_float(self._decimal_to_pct(borrow_rate_dec), "0.0001")
             positions.append(
                 {
                     "market": market.address,
@@ -453,22 +470,21 @@ class ChainReader:
                     "supplyDToken": supply_dtoken,
                     "supplyUnderlying": supply_underlying_val,
                     "borrowBalance": borrow_balance_val,
-                    "exchangeRate": self._wad_to_float(exchange_rate, "0.000000000000000001"),
-                    "price": self._to_float(price_usd, "0.000001"),
-                    "priceUsd": self._to_float(price_usd, "0.000001"),
-                    "supplyRatePerYear": self._to_float(
-                        self._rate_to_decimal(supply_rate_raw), "0.0000000000000001"
-                    ),
-                    "borrowRatePerYear": self._to_float(
-                        self._rate_to_decimal(borrow_rate_raw), "0.0000000000000001"
-                    ),
-                    "collateralFactor": self._wad_to_float(collateral_factor, "0.0000000000000001"),
+                    "exchangeRate": self._wad_to_float(exchange_rate, "0.000000000000000001") or 0.0,
+                    "price": self._to_float(price_usd, "0.000001") or 0.0,
+                    "priceUsd": self._to_float(price_usd, "0.000001") or 0.0,
+                    "supplyRatePerYear": supply_rate_float if supply_rate_float is not None else 0.0,
+                    "borrowRatePerYear": borrow_rate_float if borrow_rate_float is not None else 0.0,
+                    "supplyAprPct": supply_apr_pct if supply_apr_pct is not None else 0.0,
+                    "borrowAprPct": borrow_apr_pct if borrow_apr_pct is not None else 0.0,
+                    "collateralFactor": self._wad_to_float(collateral_factor, "0.0000000000000001") or 0.0,
                     "isListed": is_listed,
                 }
             )
 
         total_collateral_usd = Decimal(0)
         total_borrow_usd = Decimal(0)
+        total_supply_usd = Decimal(0)
         for pos in positions:
             price_usd = pos.get("priceUsd", pos.get("price"))
             cf = pos.get("collateralFactor") or 0
@@ -476,6 +492,7 @@ class ChainReader:
             borrow_usd = self._token_to_usd_from_price_usd(pos.get("borrowBalance"), price_usd)
             if supply_usd is not None:
                 total_collateral_usd += supply_usd * Decimal(str(cf))
+                total_supply_usd += supply_usd
             if borrow_usd is not None:
                 total_borrow_usd += borrow_usd
 
@@ -493,6 +510,8 @@ class ChainReader:
             if shortfall is not None
             else None
         )
+        total_supplied_usd_float = self._to_float(total_supply_usd, "0.000001") or 0.0
+        total_borrowed_usd_float = self._to_float(total_borrow_usd, "0.000001") or 0.0
 
         return {
             "account": checksum,
@@ -503,6 +522,8 @@ class ChainReader:
             "isHealthy": shortfall == 0 if shortfall is not None else None,
             "healthFactor": health_factor,
             "positions": positions,
+            "totalSuppliedUsd": total_supplied_usd_float,
+            "totalBorrowedUsd": total_borrowed_usd_float,
         }
 
     def get_account_market(self, account: str, market_address: str) -> Dict[str, Any]:

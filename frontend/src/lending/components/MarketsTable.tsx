@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { LendingMarket } from '../types';
-import { formatPct, getPrice, getMarketSupplyUsd } from '../utils';
+import { formatPct, getPrice, getMarketSupplyUsd, getSupplyApy, getBorrowApy } from '../utils';
 
 type Props = {
   markets: LendingMarket[];
@@ -27,10 +27,10 @@ export function MarketsTable({ markets, loading, onSupply, onBorrow }: Props) {
     return [...markets].sort((a, b) => {
       const supplyA = getMarketSupplyUsd(a);
       const supplyB = getMarketSupplyUsd(b);
-      const supplyAprA = (a as { supplyAprPct?: number }).supplyAprPct ?? a.supplyRatePerYear ?? 0;
-      const supplyAprB = (b as { supplyAprPct?: number }).supplyAprPct ?? b.supplyRatePerYear ?? 0;
-      const borrowAprA = (a as { borrowAprPct?: number }).borrowAprPct ?? a.borrowRatePerYear ?? 0;
-      const borrowAprB = (b as { borrowAprPct?: number }).borrowAprPct ?? b.borrowRatePerYear ?? 0;
+      const supplyAprA = getSupplyApy(a) ?? 0;
+      const supplyAprB = getSupplyApy(b) ?? 0;
+      const borrowAprA = getBorrowApy(a) ?? 0;
+      const borrowAprB = getBorrowApy(b) ?? 0;
 
       let cmp = 0;
       switch (sortBy) {
@@ -117,8 +117,8 @@ export function MarketsTable({ markets, loading, onSupply, onBorrow }: Props) {
               const totalBorrows = m.totalBorrows ?? (m as { totalBorrowsUnderlying?: number }).totalBorrowsUnderlying ?? 0;
               const supplyUsd = getMarketSupplyUsd(m);
               const borrowsUsd = (m as { totalBorrowsUsd?: number }).totalBorrowsUsd ?? totalBorrows * price;
-              const supplyApr = (m as { supplyAprPct?: number }).supplyAprPct ?? m.supplyRatePerYear;
-              const borrowApr = (m as { borrowAprPct?: number }).borrowAprPct ?? m.borrowRatePerYear;
+              const supplyApr = getSupplyApy(m);
+              const borrowApr = getBorrowApy(m);
               const util = (m.utilization ?? 0) * 100;
               const symbol = m.symbol ?? '—';
               const abbr = symbol.length >= 2 ? symbol.slice(0, 2) : (m.market?.slice(2, 4) ?? '—');
@@ -142,8 +142,8 @@ export function MarketsTable({ markets, loading, onSupply, onBorrow }: Props) {
                   <td className="px-4 py-3 text-right text-zinc-200">
                     ${borrowsUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </td>
-                  <td className="px-4 py-3 text-right text-emerald-400">{formatPct(supplyApr)}%</td>
-                  <td className="px-4 py-3 text-right text-amber-400">{formatPct(borrowApr)}%</td>
+                  <td className="px-4 py-3 text-right text-emerald-400">{formatPct(supplyApr ?? undefined)}%</td>
+                  <td className="px-4 py-3 text-right text-amber-400">{formatPct(borrowApr ?? undefined)}%</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <div className="w-14 h-1.5 rounded-full bg-zinc-700 overflow-hidden">
