@@ -8,6 +8,7 @@ type Props = {
   loading: boolean;
   connected: boolean;
   markets?: LendingMarket[];
+  onSupply: (m: LendingMarket) => void;
   onBorrow: (m: LendingMarket) => void;
   onWithdraw: (p: UserPosition) => void;
   onRepay: (p: UserPosition) => void;
@@ -42,6 +43,10 @@ function PositionTable({
   secondaryActionLabel,
   secondaryActionClass,
   isSecondaryActionDisabled,
+  onTertiaryAction,
+  tertiaryActionLabel,
+  tertiaryActionClass,
+  isTertiaryActionDisabled,
   valueKey,
   apyKey,
 }: {
@@ -56,6 +61,10 @@ function PositionTable({
   secondaryActionLabel?: string;
   secondaryActionClass?: string;
   isSecondaryActionDisabled?: (p: UserPosition) => boolean;
+  onTertiaryAction?: (p: UserPosition) => void;
+  tertiaryActionLabel?: string;
+  tertiaryActionClass?: string;
+  isTertiaryActionDisabled?: (p: UserPosition) => boolean;
   valueKey: 'supplyUnderlying' | 'borrowBalance';
   apyKey: 'supplyRatePerYear' | 'borrowRatePerYear';
 }) {
@@ -64,6 +73,8 @@ function PositionTable({
     const m = markets?.find((x) => x.market?.toLowerCase() === p.market?.toLowerCase()) ?? null;
     return apyKey === 'supplyRatePerYear' ? getSupplyApy(p, m) : getBorrowApy(p, m);
   };
+  const hasSecondaryAction = Boolean(onSecondaryAction && secondaryActionLabel);
+  const hasTertiaryAction = Boolean(onTertiaryAction && tertiaryActionLabel);
 
   return (
     <section>
@@ -79,7 +90,13 @@ function PositionTable({
               {type === 'supply' && (
                 <th className="px-4 py-3 text-right font-medium">Collateral</th>
               )}
-              <th className={`px-4 py-3 text-right font-medium ${onSecondaryAction ? 'w-44' : 'w-24'}`}>Action</th>
+              <th
+                className={`px-4 py-3 text-right font-medium ${
+                  hasSecondaryAction && hasTertiaryAction ? 'w-72' : hasSecondaryAction || hasTertiaryAction ? 'w-44' : 'w-24'
+                }`}
+              >
+                Action
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-700/60">
@@ -109,7 +126,17 @@ function PositionTable({
                   )}
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {onSecondaryAction && secondaryActionLabel && (
+                      {hasTertiaryAction && onTertiaryAction && tertiaryActionLabel && (
+                        <button
+                          type="button"
+                          onClick={() => onTertiaryAction(p)}
+                          disabled={Boolean(isTertiaryActionDisabled?.(p))}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${tertiaryActionClass ?? ''}`}
+                        >
+                          {tertiaryActionLabel}
+                        </button>
+                      )}
+                      {hasSecondaryAction && onSecondaryAction && secondaryActionLabel && (
                         <button
                           type="button"
                           onClick={() => onSecondaryAction(p)}
@@ -143,6 +170,7 @@ export function UserPositions({
   loading,
   connected,
   markets = [],
+  onSupply,
   onBorrow,
   onWithdraw,
   onRepay,
@@ -228,6 +256,10 @@ export function UserPositions({
     const market = markets.find((m) => m.market?.toLowerCase() === position.market?.toLowerCase());
     if (market) onBorrow(market);
   };
+  const handleSupplyFromPosition = (position: UserPosition) => {
+    const market = markets.find((m) => m.market?.toLowerCase() === position.market?.toLowerCase());
+    if (market) onSupply(market);
+  };
 
   return (
     <div className="space-y-6">
@@ -295,6 +327,9 @@ export function UserPositions({
           onAction={onWithdraw}
           actionLabel="Withdraw"
           actionClass="bg-red-600/90 hover:bg-red-500 text-white"
+          onTertiaryAction={handleSupplyFromPosition}
+          tertiaryActionLabel="Supply"
+          tertiaryActionClass="bg-teal-600/90 hover:bg-teal-500 text-white"
           onSecondaryAction={handleBorrowFromSupplyPosition}
           secondaryActionLabel="Borrow"
           secondaryActionClass="bg-amber-600/90 hover:bg-amber-500 text-white"

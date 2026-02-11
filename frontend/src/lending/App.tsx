@@ -257,6 +257,7 @@ function LendingApp() {
                 loading={accountLoading}
                 connected={isConnected}
                 markets={markets}
+                onSupply={handleSupply}
                 onBorrow={handleBorrow}
                 onWithdraw={handleWithdraw}
                 onRepay={handleRepay}
