@@ -30,14 +30,25 @@ function resolveProxyTarget(apiUrl: string): string {
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const localEnv = loadEnv(mode, __dirname, '')
+  const rootEnv = parseEnvFile(path.resolve(__dirname, '../.env'))
   const rootEnvExample = parseEnvFile(path.resolve(__dirname, '../.env_example'))
 
-  const VITE_API_URL = rootEnvExample.VITE_API_URL || localEnv.VITE_API_URL || '/api'
-  const VITE_NETWORK = rootEnvExample.VITE_NETWORK || localEnv.VITE_NETWORK || 'sepolia'
+  const VITE_API_URL =
+    rootEnv.VITE_API_URL || localEnv.VITE_API_URL || rootEnvExample.VITE_API_URL || '/api'
+  const VITE_NETWORK =
+    rootEnv.VITE_NETWORK || localEnv.VITE_NETWORK || rootEnv.NETWORK || rootEnvExample.VITE_NETWORK || 'sepolia'
   const VITE_ANVIL_RPC_URL =
-    rootEnvExample.VITE_ANVIL_RPC_URL || localEnv.VITE_ANVIL_RPC_URL || 'http://127.0.0.1:8545'
+    rootEnv.VITE_ANVIL_RPC_URL ||
+    rootEnv.ANVIL_RPC_URL ||
+    localEnv.VITE_ANVIL_RPC_URL ||
+    rootEnvExample.VITE_ANVIL_RPC_URL ||
+    'http://127.0.0.1:8545'
   const VITE_SEPOLIA_RPC_URL =
-    rootEnvExample.VITE_SEPOLIA_RPC_URL || localEnv.VITE_SEPOLIA_RPC_URL || 'https://rpc.sepolia.org'
+    rootEnv.VITE_SEPOLIA_RPC_URL ||
+    rootEnv.SEPOLIA_RPC_URL ||
+    localEnv.VITE_SEPOLIA_RPC_URL ||
+    rootEnvExample.VITE_SEPOLIA_RPC_URL ||
+    'https://rpc.sepolia.org'
 
   return {
     plugins: [react()],

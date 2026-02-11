@@ -47,6 +47,42 @@ export function isExpectedChainId(chainId: number | null | undefined): boolean {
   return chainId === TARGET_CHAIN_ID;
 }
 
+function isIgnorableAddChainError(error: unknown): boolean {
+  const err = error as { code?: number; message?: string };
+  const message = (err.message || '').toLowerCase();
+
+  return (
+    err.code === -32602 ||
+    message.includes('already') ||
+    message.includes('exists') ||
+    message.includes('duplicate') ||
+    message.includes('same chain id')
+  );
+}
+
+async function ensureWalletNetworkConfig(): Promise<void> {
+  if (!window.ethereum) return;
+
+  try {
+    await window.ethereum.request({
+      method: 'wallet_addEthereumChain',
+      params: [
+        {
+          chainId: TARGET_NETWORK.chainHex,
+          chainName: TARGET_NETWORK.chainName,
+          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+          rpcUrls: [TARGET_NETWORK.rpcUrl],
+          ...(TARGET_NETWORK.explorerUrl ? { blockExplorerUrls: [TARGET_NETWORK.explorerUrl] } : {}),
+        },
+      ],
+    });
+  } catch (error) {
+    if (!isIgnorableAddChainError(error)) {
+      throw error;
+    }
+  }
+}
+
 export async function switchWalletToTargetNetwork(): Promise<number> {
   if (!window.ethereum) {
     throw new Error('MetaMask or compatible wallet not found');
@@ -55,6 +91,7 @@ export async function switchWalletToTargetNetwork(): Promise<number> {
   const currentHex = await window.ethereum.request({ method: 'eth_chainId' });
   const currentChainId = parseInt(String(currentHex), 16);
   if (currentChainId === TARGET_CHAIN_ID) {
+    await ensureWalletNetworkConfig();
     return currentChainId;
   }
 
@@ -68,18 +105,10 @@ export async function switchWalletToTargetNetwork(): Promise<number> {
     if (err.code !== 4902) {
       throw new Error(err.message || `Failed to switch to ${TARGET_NETWORK_LABEL}`);
     }
-
+    await ensureWalletNetworkConfig();
     await window.ethereum.request({
-      method: 'wallet_addEthereumChain',
-      params: [
-        {
-          chainId: TARGET_NETWORK.chainHex,
-          chainName: TARGET_NETWORK.chainName,
-          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-          rpcUrls: [TARGET_NETWORK.rpcUrl],
-          ...(TARGET_NETWORK.explorerUrl ? { blockExplorerUrls: [TARGET_NETWORK.explorerUrl] } : {}),
-        },
-      ],
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: TARGET_NETWORK.chainHex }],
     });
   }
 

@@ -69,7 +69,19 @@ function LendingApp() {
     }
   };
 
-  const handleSupply = (market: LendingMarket) => openModal(market, 'supply', '1000000');
+  const handleSupply = async (market: LendingMarket) => {
+    let max = '0';
+    if (isConnected && account) {
+      try {
+        const balance = await Web3Service.getUnderlyingBalance(market.underlying);
+        const parsed = Number(balance);
+        max = Number.isFinite(parsed) && parsed > 0 ? balance : '0';
+      } catch {
+        // Keep max as 0 when balance read fails.
+      }
+    }
+    openModal(market, 'supply', max);
+  };
   const handleBorrow = (market: LendingMarket) => {
     const availableUsd = accountData?.availableToBorrow ?? 0;
     const price = getPrice(market);
