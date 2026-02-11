@@ -6,7 +6,7 @@ The frontend is organized into modular components to support multiple applicatio
 
 ## Directory Structure
 
-```
+````
 frontend/src/
 ├── App.tsx                    # Main app container (routes to different pages)
 ├── main.tsx                   # Application entry point
@@ -17,7 +17,6 @@ frontend/src/
 │   ├── components/            # Mining-specific components
 │   │   ├── Header.tsx        # Navigation header
 │   │   ├── PoolsTable.tsx    # Liquidity pools table
-│   │   ├── Transactions.tsx   # Transaction history
 │   │   ├── AnalyticsDashboard.tsx  # Market analytics
 │   │   ├── StatCard.tsx      # Statistics card component
 │   │   ├── Notification.tsx   # Notification component
@@ -39,7 +38,7 @@ frontend/src/
 mkdir -p src/[page-name]/components
 mkdir -p src/[page-name]/hooks
 mkdir -p src/[page-name]/services
-```
+````
 
 ### 2. Create Page App Component
 
@@ -172,7 +171,7 @@ export function formatNumber(value: number): string {
 Import from any page:
 
 ```typescript
-import { formatNumber } from '@/utils/format';
+import { formatNumber } from "@/utils/format";
 ```
 
 ## Import Path Aliases
@@ -181,13 +180,13 @@ Use the `@/` prefix for imports from the `src` directory:
 
 ```typescript
 // Import from mining components
-import { Header } from '@/mining/components/Header';
+import { Header } from "@/mining/components/Header";
 
 // Import from mining hooks
-import { useAPI } from '@/mining/hooks/useAPI';
+import { useAPI } from "@/mining/hooks/useAPI";
 
 // Import from utils
-import { formatNumber } from '@/utils/format';
+import { formatNumber } from "@/utils/format";
 ```
 
 ## Current Pages
@@ -195,26 +194,28 @@ import { formatNumber } from '@/utils/format';
 ### Mining Page (`src/mining/`)
 
 **Features:**
+
 - Liquidity pools display
-- Transaction history
 - Market analytics
 - Wallet integration
 - Supply/Borrow functionality
 
 **Components:**
+
 - Header: Navigation with tabs
 - PoolsTable: Interactive pools table
-- Transactions: Transaction history list
 - AnalyticsDashboard: Market statistics and charts
 - StatCard: Statistic display card
 - Notification: Toast notifications
 - UI: Reusable UI components
 
 **Hooks:**
+
 - useAPI: Backend API interactions
 - useWallet: Wallet connection and management
 
 **Services:**
+
 - api.ts: REST API client
 - web3.ts: Blockchain interaction
 

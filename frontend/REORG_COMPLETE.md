@@ -7,6 +7,7 @@ All liquidity mining related files have been successfully moved to the `mining/`
 ## What Changed
 
 ### Before
+
 ```
 src/
 ├── components/     (8 mining components)
@@ -16,6 +17,7 @@ src/
 ```
 
 ### After
+
 ```
 src/
 ├── App.tsx                          # Simple container
@@ -29,24 +31,27 @@ src/
 
 ## Files Reorganized
 
-### Moved to `mining/components/` (7 files)
+### Moved to `mining/components/` (6 files)
+
 - ✅ Header.tsx
 - ✅ PoolsTable.tsx
-- ✅ Transactions.tsx
 - ✅ AnalyticsDashboard.tsx
 - ✅ StatCard.tsx
 - ✅ Notification.tsx
 - ✅ UI.tsx
 
 ### Moved to `mining/hooks/` (2 files)
+
 - ✅ useAPI.ts
 - ✅ useWallet.ts
 
 ### Moved to `mining/services/` (2 files)
+
 - ✅ api.ts
 - ✅ web3.ts
 
 ### Created New Files
+
 - ✅ mining/App.tsx - Mining app component (extracted from main App.tsx)
 - ✅ App.tsx - Simplified main container
 - ✅ frontend/.env - Environment configuration
@@ -59,35 +64,40 @@ All import statements have been updated to use the new paths:
 
 ```typescript
 // Old imports
-import { Header } from '@/components/Header';
-import { useWallet } from '@/hooks/useWallet';
+import { Header } from "@/components/Header";
+import { useWallet } from "@/hooks/useWallet";
 
 // New imports
-import { Header } from '@/mining/components/Header';
-import { useWallet } from '@/mining/hooks/useWallet';
+import { Header } from "@/mining/components/Header";
+import { useWallet } from "@/mining/hooks/useWallet";
 ```
 
 ## Benefits
 
 ### 1. **Modularity**
+
 - Each page is self-contained with its own components, hooks, and services
 - Easy to add new pages without affecting existing code
 
 ### 2. **Scalability**
+
 - Clear separation between different application modules
 - Easy to maintain and update individual features
 
 ### 3. **Organization**
+
 - Logical grouping of related files
 - Clear ownership and boundaries
 
 ### 4. **Team Collaboration**
+
 - Multiple developers can work on different pages independently
 - Reduced merge conflicts
 
 ## How to Add a New Page
 
 ### Step 1: Create Directory Structure
+
 ```bash
 mkdir -p src/[page-name]/components
 mkdir -p src/[page-name]/hooks
@@ -95,6 +105,7 @@ mkdir -p src/[page-name]/services
 ```
 
 ### Step 2: Create Page Component
+
 ```tsx
 // src/[page-name]/App.tsx
 import React from 'react';
@@ -107,6 +118,7 @@ export default [PageName]App;
 ```
 
 ### Step 3: Update Main App
+
 ```tsx
 // src/App.tsx
 import React from 'react';
@@ -126,8 +138,8 @@ export default App;
 The mining module contains all existing functionality:
 
 ### Features
+
 - ✅ Liquidity pools display
-- ✅ Transaction history
 - ✅ Market analytics
 - ✅ Wallet integration (MetaMask)
 - ✅ Supply functionality
@@ -135,18 +147,20 @@ The mining module contains all existing functionality:
 - ✅ Responsive design
 
 ### Pages/Tabs
+
 - **Pools**: View and manage liquidity pools
-- **Transactions**: View transaction history
 - **Analytics**: Market statistics and charts
 
 ## Documentation
 
 ### Available Guides
+
 1. **FRONTEND_STRUCTURE.md** - Detailed directory structure and guidelines
 2. **QUICK_REFERENCE.md** - Quick reference for developers
 3. **SUPPLY_TEST_GUIDE.md** - Testing guide for supply functionality
 
 ### File Structure Reference
+
 ```
 frontend/
 ├── FRONTEND_STRUCTURE.md      # Detailed structure guide

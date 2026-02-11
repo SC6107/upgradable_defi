@@ -3,13 +3,12 @@ import { Header } from './components/Header';
 import { PoolsTable } from './components/PoolsTable';
 import { StakeRewards } from './components/StakeRewards';
 import { ProtocolUpgradeInfo } from '../ProtocolUpgradeInfo';
-import { Transactions } from './components/Transactions';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { StatCard } from './components/StatCard';
 import { useMarkets, useAccount, useHealth } from '../mining/hooks/useAPI';
 import { useWallet } from '../mining/hooks/useWallet';
 
-const MINING_TABS = ['pools', 'stake', 'transactions', 'analytics'] as const;
+const MINING_TABS = ['pools', 'stake', 'analytics'] as const;
 type MiningTab = (typeof MINING_TABS)[number];
 
 function useMiningTab(): MiningTab {
@@ -102,13 +101,6 @@ function MiningApp() {
                 account={wallet.account}
                 isConnected={wallet.isConnected}
               />
-            </div>
-          )}
-
-          {activeTab === 'transactions' && (
-            <div>
-              <h2 className="text-3xl font-bold mb-6">Recent Transactions</h2>
-              <Transactions />
             </div>
           )}
 
