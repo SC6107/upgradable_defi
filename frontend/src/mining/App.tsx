@@ -3,15 +3,13 @@ import { Header } from './components/Header';
 import { PoolsTable } from './components/PoolsTable';
 import { StakeRewards } from './components/StakeRewards';
 import { UserPortfolio } from './components/UserPortfolio';
-import { Transactions } from './components/Transactions';
-import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { StatCard } from './components/StatCard';
 import { useMarkets, useHealth } from '@/shared/hooks/useAPI';
 import { useWallet } from '@/shared/hooks/useWallet';
 import { useAccount } from './hooks/useAPI';
 import Web3Service from './services/web3';
 
-const MINING_TABS = ['pools', 'portfolio', 'stake', 'transactions', 'analytics'] as const;
+const MINING_TABS = ['pools', 'portfolio', 'stake'] as const;
 type MiningTab = (typeof MINING_TABS)[number];
 
 function useMiningTab(): MiningTab {
@@ -53,7 +51,7 @@ function MiningApp() {
       : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white">
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white">
       <Header
         account={walletAccount}
         isConnected={isConnected}
@@ -68,7 +66,7 @@ function MiningApp() {
         onSwitchNetwork={switchNetwork}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:seo-8 py-8">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         {isConnected && isWrongNetwork && (
           <div className="mb-4 flex items-center justify-between gap-4 rounded-xl border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-amber-200 text-sm">
             <span>
@@ -85,8 +83,7 @@ function MiningApp() {
             </button>
           </div>
         )}
-        {activeTab !== 'analytics' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatCard
               label="Total TVL"
               value={`$${(totalTVL / 1e6).toFixed(2)}`}
@@ -113,8 +110,7 @@ function MiningApp() {
                 }}
               />
             )}
-          </div>
-        )}
+        </div>
 
         <div className="space-y-8">
           {activeTab === 'pools' && (
@@ -149,30 +145,16 @@ function MiningApp() {
             </div>
           )}
 
-          {activeTab === 'transactions' && (
-            <div>
-              <h2 className="text-3xl font-bold mb-6">Recent Transactions</h2>
-              <Transactions />
-            </div>
-          )}
-
-          {activeTab === 'analytics' && (
-            <div>
-              <h2 className="text-3xl font-bold mb-6">Market Analytics</h2>
-              <AnalyticsDashboard markets={markets} />
-            </div>
-          )}
-        </div>
-
-        <div className="mt-16 pt-8 border-t border-slate-700 text-center text-gray-400 text-sm">
-          {health && (
-            <p>
-              Chain ID: {health.chainId} • Latest Block: {health.latestBlock} • Synced to Block:{' '}
-              {health.indexedToBlock}
-            </p>
-          )}
         </div>
       </main>
+
+      <footer className="mt-auto border-t border-slate-700 text-center text-gray-400 text-sm py-6">
+        {health && (
+          <p>
+            Chain ID: {health.chainId} • Latest Block: {health.latestBlock}
+          </p>
+        )}
+      </footer>
     </div>
   );
 }
