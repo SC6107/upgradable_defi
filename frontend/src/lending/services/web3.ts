@@ -38,11 +38,9 @@ class LendingWeb3Service extends Web3Base {
     marketAddress: string,
     amount: string,
     underlyingAddress: string,
-    comptrollerAddress?: string | null
   ): Promise<string> {
     try {
       if (!this.signer || !this.account) throw new Error('Wallet not connected');
-      // approve + mint (+ optional enterMarkets) may require multiple txs
       await this.assertGasBalance(900000n);
       await this.assertContractExists(underlyingAddress, 'Underlying token');
       await this.assertContractExists(marketAddress, 'Lending market');
@@ -64,10 +62,6 @@ class LendingWeb3Service extends Web3Base {
       const lendingContract = new ethers.Contract(marketAddress, LENDING_TOKEN_ABI, this.signer);
       const mintTx = await lendingContract.mint(amountWei);
       const receipt = await mintTx.wait();
-
-      if (comptrollerAddress) {
-        await this.enterMarkets(comptrollerAddress, [marketAddress]);
-      }
 
       return receipt.hash;
     } catch (error) {

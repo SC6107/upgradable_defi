@@ -63,7 +63,7 @@ function LendingApp() {
     setAction(a);
     setMaxAmount(max);
     setModalOpen(true);
-    // Ensure we have comptroller for supply so enterMarkets can run (enables borrow limit)
+    // Pre-fetch comptroller address so enterMarketsIfNeeded has it cached
     if (a === 'supply' && !comptroller) {
       API.getContractAddresses().then((r) => setComptroller(r.comptroller ?? null)).catch(() => {});
     }
@@ -114,28 +114,31 @@ function LendingApp() {
       await new Promise((r) => setTimeout(r, 1500));
       await refetchMarkets();
       if (account) await refetchAccount();
-      // After supply: if borrow limit is still 0, user hasn't entered markets — call enterMarkets so they can borrow
-      if (action === 'supply' && account) {
-        const fresh = await API.getAccount(account).catch(() => null);
-        const liquidityUsd = fresh?.liquidityUsd ?? fresh?.liquidity;
-        const hasSupply = fresh?.positions?.some((p) => getPositionBalance(p, 'supplyUnderlying') > 0);
-        if (hasSupply && (liquidityUsd == null || liquidityUsd === 0)) {
-          const comp = comptroller ?? (await API.getContractAddresses().then((r) => r.comptroller ?? null).catch(() => null));
-          if (comp && fresh?.positions) {
-            const marketsToEnter = fresh.positions.filter((p) => getPositionBalance(p, 'supplyUnderlying') > 0).map((p) => p.market);
-            if (marketsToEnter.length > 0) {
-              await Web3Service.enterMarkets(comp, marketsToEnter);
-              await refetchAccount();
-            }
-          }
-        }
-      }
-      // Poll once more so balance/value/APY are up to date before showing Positions
-      await new Promise((r) => setTimeout(r, 2000));
-      if (account) await refetchAccount();
       if (action === 'supply' || action === 'borrow') navigate('/lending/positions');
     } catch (e) {
       setRefetchError(e instanceof Error ? e.message : 'Failed to refresh data');
+    }
+
+    // After supply: if borrow limit is still 0, enter markets so the user can borrow.
+    // This runs after the modal closes (fire-and-forget) so the user sees the success screen first.
+    if (action === 'supply' && account) {
+      enterMarketsIfNeeded(account).catch(() => {});
+    }
+  };
+
+  const enterMarketsIfNeeded = async (userAccount: string) => {
+    const fresh = await API.getAccount(userAccount).catch(() => null);
+    const liquidityUsd = fresh?.liquidityUsd ?? fresh?.liquidity;
+    const hasSupply = fresh?.positions?.some((p) => getPositionBalance(p, 'supplyUnderlying') > 0);
+    if (!hasSupply || (liquidityUsd != null && liquidityUsd > 0)) return;
+
+    const comp = comptroller ?? (await API.getContractAddresses().then((r) => r.comptroller ?? null).catch(() => null));
+    if (!comp || !fresh?.positions) return;
+
+    const marketsToEnter = fresh.positions.filter((p) => getPositionBalance(p, 'supplyUnderlying') > 0).map((p) => p.market);
+    if (marketsToEnter.length > 0) {
+      await Web3Service.enterMarkets(comp, marketsToEnter);
+      await refetchAccount();
     }
   };
 
@@ -254,7 +257,6 @@ function LendingApp() {
         market={selectedMarket}
         onSuccess={handleModalSuccess}
         maxAmount={maxAmount}
-        comptrollerAddress={comptroller}
       />
     </div>
   );

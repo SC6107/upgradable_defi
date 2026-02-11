@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { LendingMarket, LendingAction } from '../types';
 import Web3Service from '../services/web3';
-import API from '../services/api';
 import { formatPct } from '../utils';
 import { TARGET_NETWORK } from '@/config/network';
 
@@ -12,7 +11,6 @@ type Props = {
   market: LendingMarket | null;
   onSuccess: () => void | Promise<void>;
   maxAmount?: string;
-  comptrollerAddress?: string | null;
 };
 
 const LABELS: Record<LendingAction, string> = {
@@ -29,7 +27,6 @@ export function ActionModal({
   market,
   onSuccess,
   maxAmount = '0',
-  comptrollerAddress,
 }: Props) {
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -57,16 +54,10 @@ export function ActionModal({
     }
     setLoading(true);
     try {
-      // Ensure we have comptroller for supply so enterMarkets runs (supply then counts as collateral for borrow)
-      let compAddress = comptrollerAddress;
-      if (action === 'supply' && !compAddress) {
-        const addrs = await API.getContractAddresses().catch(() => null);
-        compAddress = addrs?.comptroller ?? null;
-      }
       let hash: string;
       switch (action) {
         case 'supply':
-          hash = await Web3Service.supply(market.market, amount, market.underlying ?? '', compAddress);
+          hash = await Web3Service.supply(market.market, amount, market.underlying ?? '');
           break;
         case 'withdraw':
           hash = await Web3Service.withdraw(market.market, amount, true);
@@ -81,12 +72,11 @@ export function ActionModal({
           throw new Error('Unknown action');
       }
       setTxHash(hash);
-      await Promise.resolve(onSuccess());
-      await new Promise((r) => setTimeout(r, 500));
-      onClose();
+      setLoading(false);
+      // Refresh data in background — don't block the success screen
+      Promise.resolve(onSuccess()).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Transaction failed');
-    } finally {
       setLoading(false);
     }
   };
