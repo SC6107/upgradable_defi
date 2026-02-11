@@ -1,16 +1,25 @@
-import React, { useState } from 'react';
-import API from '@/mining/services/api';
+import { useCallback, useEffect, useState } from 'react';
+import API, { type Event as ProtocolEvent } from '@/mining/services/api';
 
 interface TransactionsProps {
   selectedMarket?: string;
 }
 
-export const Transactions: React.FC<TransactionsProps> = ({ selectedMarket }) => {
-  const [events, setEvents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState('all');
+const EVENT_FILTERS = ['all', 'Deposit', 'Withdraw', 'Borrow', 'Repay'] as const;
+type EventFilter = (typeof EVENT_FILTERS)[number];
 
-  const fetchTransactions = async () => {
+function getExplorerBaseUrl(): string {
+  return import.meta.env.VITE_NETWORK === 'sepolia'
+    ? 'https://sepolia.etherscan.io/tx/'
+    : 'https://etherscan.io/tx/';
+}
+
+export function Transactions({ selectedMarket }: TransactionsProps) {
+  const [events, setEvents] = useState<ProtocolEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<EventFilter>('all');
+
+  const fetchTransactions = useCallback(async () => {
     setLoading(true);
     try {
       const data = await API.getEvents(
@@ -26,17 +35,17 @@ export const Transactions: React.FC<TransactionsProps> = ({ selectedMarket }) =>
     } finally {
       setLoading(false);
     }
-  };
-
-  React.useEffect(() => {
-    fetchTransactions();
   }, [selectedMarket, filter]);
+
+  useEffect(() => {
+    void fetchTransactions();
+  }, [fetchTransactions]);
 
   if (loading && events.length === 0) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mb-4"></div>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mb-4" />
           <p className="text-gray-400">Loading transactions...</p>
         </div>
       </div>
@@ -51,26 +60,26 @@ export const Transactions: React.FC<TransactionsProps> = ({ selectedMarket }) =>
     );
   }
 
+  const explorerBase = getExplorerBaseUrl();
+
   return (
     <div className="space-y-6">
-      {/* Filters */}
       <div className="flex gap-2">
-        {['all', 'Deposit', 'Withdraw', 'Borrow', 'Repay'].map((f) => (
+        {EVENT_FILTERS.map((eventFilter) => (
           <button
-            key={f}
-            onClick={() => setFilter(f)}
+            key={eventFilter}
+            onClick={() => setFilter(eventFilter)}
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              filter === f
+              filter === eventFilter
                 ? 'text-white bg-slate-700'
                 : 'text-gray-400 hover:text-white hover:bg-slate-700'
             }`}
           >
-            {f}
+            {eventFilter}
           </button>
         ))}
       </div>
 
-      {/* Transactions Table */}
       <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -86,7 +95,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ selectedMarket }) =>
             <tbody>
               {events.map((event, index) => (
                 <tr
-                  key={`${event.transactionHash}-${index}`}
+                  key={event.id || `${event.transactionHash}-${event.logIndex}-${index}`}
                   className="border-b border-slate-700 hover:bg-slate-700/50 transition-colors"
                 >
                   <td className="px-6 py-4">
@@ -94,13 +103,11 @@ export const Transactions: React.FC<TransactionsProps> = ({ selectedMarket }) =>
                       {event.event}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-gray-400">
-                    {event.contract.slice(0, 10)}...
-                  </td>
+                  <td className="px-6 py-4 text-gray-400">{event.contract.slice(0, 10)}...</td>
                   <td className="px-6 py-4 text-gray-400">{event.blockNumber}</td>
                   <td className="px-6 py-4">
                     <a
-                      href={`https://etherscan.io/tx/${event.transactionHash}`}
+                      href={`${explorerBase}${event.transactionHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-pink-500 hover:text-pink-400 transition-colors"
@@ -126,4 +133,4 @@ export const Transactions: React.FC<TransactionsProps> = ({ selectedMarket }) =>
       </div>
     </div>
   );
-};
+}

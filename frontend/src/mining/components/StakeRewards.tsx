@@ -2,7 +2,7 @@
  * Stake & Rewards
  * Stake dTokens in LiquidityMining to earn GOV; withdraw and claim rewards.
  */
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import API from '../services/api';
 import Web3Service from '../services/web3';
 import type { LiquidityMiningPool, LiquidityMiningAccountPosition } from '../services/api';
@@ -13,11 +13,11 @@ interface StakeRewardsProps {
   onSuccess?: () => void;
 }
 
-export const StakeRewards: React.FC<StakeRewardsProps> = ({
+export function StakeRewards({
   account,
   isConnected,
   onSuccess,
-}) => {
+}: StakeRewardsProps) {
   const [pools, setPools] = useState<LiquidityMiningPool[]>([]);
   const [positions, setPositions] = useState<LiquidityMiningAccountPosition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +27,7 @@ export const StakeRewards: React.FC<StakeRewardsProps> = ({
   const [loadingTx, setLoadingTx] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -42,11 +42,11 @@ export const StakeRewards: React.FC<StakeRewardsProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [account]);
 
   useEffect(() => {
-    fetchData();
-  }, [account]);
+    void fetchData();
+  }, [fetchData]);
 
   const getPosition = (miningAddress: string) =>
     positions.find((p) => p.mining?.toLowerCase() === miningAddress?.toLowerCase());
@@ -123,7 +123,7 @@ export const StakeRewards: React.FC<StakeRewardsProps> = ({
       <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
         <p className="text-red-400">{error}</p>
         <button
-          onClick={fetchData}
+          onClick={() => void fetchData()}
           className="mt-2 px-4 py-2 rounded-lg bg-slate-600 text-white text-sm"
         >
           Retry

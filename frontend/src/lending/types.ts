@@ -16,7 +16,19 @@ export interface LendingMarket {
   utilization: number;
   borrowRatePerYear: number;
   supplyRatePerYear: number;
+  supplyAprPct?: number;
+  borrowAprPct?: number;
+  supplyAPY?: number;
+  borrowAPY?: number;
+  supply_rate_per_year?: number;
+  borrow_rate_per_year?: number;
   price: number;
+  priceUsd?: number;
+  totalSupplyUsd?: number;
+  totalBorrowsUsd?: number;
+  totalSupplyUnderlying?: number;
+  totalBorrowsUnderlying?: number;
+  total_supply_usd?: number;
   collateralFactor: number;
   isListed: boolean;
 }
@@ -31,15 +43,23 @@ export interface UserPosition {
   borrowBalance: number;
   exchangeRate: number;
   price: number;
+  priceUsd?: number;
   collateralFactor: number;
   isListed: boolean;
   supplyAPY: number;
   borrowAPY: number;
+  supplyAprPct?: number;
+  borrowAprPct?: number;
+  supply_rate_per_year?: number;
+  borrow_rate_per_year?: number;
+  supply_underlying?: number;
+  borrow_balance?: number;
 }
 
 export interface AccountData {
   account: string;
   liquidity: number;
+  liquidityUsd?: number;
   shortfall: number;
   isHealthy: boolean;
   positions: UserPosition[];

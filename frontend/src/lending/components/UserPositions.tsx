@@ -14,7 +14,7 @@ type Props = {
   onRefetch?: () => void | Promise<void>;
 };
 
-function useSummary(positions: UserPosition[], liquidityUsd: number | undefined) {
+function buildSummary(positions: UserPosition[], liquidityUsd: number | undefined) {
   const totalSupplied = positions.reduce((s, p) => s + getPositionBalance(p, 'supplyUnderlying') * getPrice(p), 0);
   const totalBorrowed = positions.reduce((s, p) => s + getPositionBalance(p, 'borrowBalance') * getPrice(p), 0);
   const borrowLimitFromCf = positions.reduce(
@@ -81,7 +81,7 @@ function PositionTable({
               const valueUsd = Number.isFinite(balance) && Number.isFinite(price) ? balance * price : 0;
               const apyRaw = getApy(p);
               const apy = apyRaw != null && Number.isFinite(Number(apyRaw)) ? Number(apyRaw) : undefined;
-              const decimals = typeof (p as { decimals?: number }).decimals === 'number' ? (p as { decimals: number }).decimals : 4;
+              const decimals = typeof p.decimals === 'number' ? p.decimals : 4;
               return (
                 <tr key={p.market} className="hover:bg-zinc-800/50">
                   <td className="px-4 py-3 font-medium text-white">{p.symbol}</td>
@@ -183,10 +183,10 @@ export function UserPositions({
 
   const supplyPositions = account.positions.filter((p) => getPositionBalance(p, 'supplyUnderlying') > 0);
   const borrowPositions = account.positions.filter((p) => getPositionBalance(p, 'borrowBalance') > 0);
-  const liquidityUsd = (account as { liquidityUsd?: number }).liquidityUsd ?? account.liquidity;
-  const summary = useSummary(account.positions, liquidityUsd);
+  const liquidityUsd = account.liquidityUsd ?? account.liquidity;
+  const summary = buildSummary(account.positions, liquidityUsd);
   // Always show when user has supply; enterMarkets is idempotent (no-op if already entered)
-  const showEnterMarkets = supplyPositions.length > 0 && comptrollerAddress && onRefetch;
+  const showEnterMarkets = supplyPositions.length > 0 && Boolean(comptrollerAddress) && Boolean(onRefetch);
 
   return (
     <div className="space-y-6">

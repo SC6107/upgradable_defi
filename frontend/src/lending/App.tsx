@@ -6,6 +6,7 @@ import { UserPositions } from './components/UserPositions';
 import { ActionModal } from './components/ActionModal';
 import { useMarkets, useAccount, useWallet } from './hooks/useLending';
 import API from './services/api';
+import Web3Service from './services/web3';
 import type { LendingMarket, LendingAction, UserPosition } from './types';
 import { getMarketSupplyUsd, formatTvl, getPrice, getPositionBalance } from './utils';
 
@@ -111,7 +112,6 @@ function LendingApp() {
           if (comp && fresh?.positions) {
             const marketsToEnter = fresh.positions.filter((p) => getPositionBalance(p, 'supplyUnderlying') > 0).map((p) => p.market);
             if (marketsToEnter.length > 0) {
-              const Web3Service = (await import('./services/web3')).default;
               await Web3Service.enterMarkets(comp, marketsToEnter);
               await refetchAccount();
             }

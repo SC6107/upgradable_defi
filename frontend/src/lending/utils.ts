@@ -18,15 +18,17 @@ export function getPrice(p: { price?: number; priceUsd?: number }): number {
   return p.price ?? p.priceUsd ?? 0;
 }
 
-type RateSource = Record<string, unknown> & {
-  supplyRatePerYear?: number;
-  borrowRatePerYear?: number;
-  supplyAprPct?: number;
-  borrowAprPct?: number;
-  supplyAPY?: number;
-  borrowAPY?: number;
-  supply_rate_per_year?: number;
-  borrow_rate_per_year?: number;
+type NumericLike = number | string | null | undefined;
+
+type RateSource = {
+  supplyRatePerYear?: NumericLike;
+  borrowRatePerYear?: NumericLike;
+  supplyAprPct?: NumericLike;
+  borrowAprPct?: NumericLike;
+  supplyAPY?: NumericLike;
+  borrowAPY?: NumericLike;
+  supply_rate_per_year?: NumericLike;
+  borrow_rate_per_year?: NumericLike;
 };
 
 /**
@@ -39,14 +41,14 @@ export function getSupplyApy(item: RateSource, marketFallback?: RateSource | nul
     item.supplyAprPct ??
     item.supplyRatePerYear ??
     item.supplyAPY ??
-    (item as Record<string, unknown>).supply_rate_per_year;
+    item.supply_rate_per_year;
   const n = raw != null ? Number(raw) : undefined;
   if (n != null && Number.isFinite(n)) return n;
   if (marketFallback) {
     const fromM =
       marketFallback.supplyAprPct ??
       marketFallback.supplyRatePerYear ??
-      (marketFallback as Record<string, unknown>).supply_rate_per_year;
+      marketFallback.supply_rate_per_year;
     const nm = fromM != null ? Number(fromM) : undefined;
     if (nm != null && Number.isFinite(nm)) return nm;
   }
@@ -61,14 +63,14 @@ export function getBorrowApy(item: RateSource, marketFallback?: RateSource | nul
     item.borrowAprPct ??
     item.borrowRatePerYear ??
     item.borrowAPY ??
-    (item as Record<string, unknown>).borrow_rate_per_year;
+    item.borrow_rate_per_year;
   const n = raw != null ? Number(raw) : undefined;
   if (n != null && Number.isFinite(n)) return n;
   if (marketFallback) {
     const fromM =
       marketFallback.borrowAprPct ??
       marketFallback.borrowRatePerYear ??
-      (marketFallback as Record<string, unknown>).borrow_rate_per_year;
+      marketFallback.borrow_rate_per_year;
     const nm = fromM != null ? Number(fromM) : undefined;
     if (nm != null && Number.isFinite(nm)) return nm;
   }
@@ -122,9 +124,16 @@ export function shortAddress(addr: string): string {
   return addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : '—';
 }
 
+type PositionBalanceSource = {
+  supplyUnderlying?: NumericLike;
+  borrowBalance?: NumericLike;
+  supply_underlying?: NumericLike;
+  borrow_balance?: NumericLike;
+};
+
 /** Read position balance (supply or borrow); handles both camelCase and snake_case from API. */
 export function getPositionBalance(
-  p: Record<string, unknown>,
+  p: PositionBalanceSource,
   key: 'supplyUnderlying' | 'borrowBalance'
 ): number {
   const camel = p[key];

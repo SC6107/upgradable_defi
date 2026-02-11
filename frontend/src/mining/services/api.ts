@@ -61,7 +61,7 @@ export interface Event {
   blockNumber: number;
   transactionHash: string;
   logIndex: number;
-  args: Record<string, any>;
+  args: Record<string, unknown>;
 }
 
 export interface ContractAddressMarketDetail {
@@ -179,7 +179,7 @@ class APIService {
     event?: string,
     fromBlock?: number,
     toBlock?: number
-  ): Promise<Record<string, any>> {
+  ): Promise<Record<string, unknown>> {
     const params = new URLSearchParams();
     if (contract) params.append('contract', contract);
     if (event) params.append('event', event);

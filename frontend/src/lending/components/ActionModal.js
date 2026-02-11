@@ -37,8 +37,8 @@ export function ActionModal({ isOpen, onClose, action, market, onSuccess, maxAmo
             // Ensure we have comptroller for supply so enterMarkets runs (supply then counts as collateral for borrow)
             let compAddress = comptrollerAddress;
             if (action === 'supply' && !compAddress) {
-                const addrs = await API.getContractAddresses().catch(() => ({}));
-                compAddress = addrs.comptroller ?? null;
+                const addrs = await API.getContractAddresses().catch(() => null);
+                compAddress = addrs?.comptroller ?? null;
             }
             let hash;
             switch (action) {

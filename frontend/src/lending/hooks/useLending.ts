@@ -101,8 +101,14 @@ export const useWallet = () => {
 
   const updateChainId = useCallback(async (): Promise<number | null> => {
     if (!window.ethereum) return null;
-    const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
-    const parsed = parseInt(chainIdHex as string, 16);
+    const chainIdValue = await window.ethereum.request({ method: 'eth_chainId' });
+    const parsed =
+      typeof chainIdValue === 'string'
+        ? parseInt(chainIdValue, 16)
+        : typeof chainIdValue === 'number'
+          ? chainIdValue
+          : Number.NaN;
+    if (!Number.isFinite(parsed)) return null;
     setChainId(parsed);
     return parsed;
   }, []);
@@ -155,7 +161,9 @@ export const useWallet = () => {
   useEffect(() => {
     if (!window.ethereum) return undefined;
 
-    const handleAccountsChanged = (accounts: string[]) => {
+    const handleAccountsChanged = (...args: unknown[]) => {
+      const raw = args[0];
+      const accounts = Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : [];
       if (accounts.length === 0) {
         disconnect();
       } else if (accounts[0] !== account) {
@@ -163,8 +171,16 @@ export const useWallet = () => {
       }
     };
 
-    const handleChainChanged = (chainIdHex: string) => {
-      setChainId(parseInt(chainIdHex, 16));
+    const handleChainChanged = (...args: unknown[]) => {
+      const chainIdValue = args[0];
+      const nextChainId =
+        typeof chainIdValue === 'string'
+          ? parseInt(chainIdValue, 16)
+          : typeof chainIdValue === 'number'
+            ? chainIdValue
+            : Number.NaN;
+      if (!Number.isFinite(nextChainId)) return;
+      setChainId(nextChainId);
       window.location.reload();
     };
 
