@@ -97,11 +97,20 @@ def _extract_addresses_from_run_json(path: Path) -> Optional[Dict[str, object]]:
     markets = addresses_for(MARKET_ABI_NAME)
     mining = addresses_for(LIQUIDITY_MINING_ABI_NAME)
 
+    # Governance-related contracts (optional but recommended)
+    gov_tokens = addresses_for("GovernanceToken")
+    governors = addresses_for("ProtocolGovernor")
+    timelocks = addresses_for("ProtocolTimelock")
+
     return {
         "comptroller": comptrollers[0] if comptrollers else None,
         "markets": markets,
         "liquidityMining": mining,
         "priceOracle": price_oracles[0] if price_oracles else None,
+        # Governance
+        "governanceToken": gov_tokens[0] if gov_tokens else None,
+        "protocolGovernor": governors[0] if governors else None,
+        "protocolTimelock": timelocks[0] if timelocks else None,
     }
 
 
@@ -122,6 +131,10 @@ def _load_addresses_file(path: Path) -> Optional[Dict[str, object]]:
         "markets": data.get("markets", []),
         "liquidityMining": data.get("liquidityMining", []),
         "priceOracle": data.get("priceOracle"),
+        # Optional governance entries if present
+        "governanceToken": data.get("governanceToken"),
+        "protocolGovernor": data.get("protocolGovernor"),
+        "protocolTimelock": data.get("protocolTimelock"),
     }
 
 

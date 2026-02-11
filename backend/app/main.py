@@ -19,6 +19,7 @@ tags_metadata = [
     {"name": "Markets", "description": "Lending market data, summaries, and time series"},
     {"name": "Accounts", "description": "User account positions, overviews, and wallet balances"},
     {"name": "Liquidity Mining", "description": "Liquidity mining pools and user positions"},
+    {"name": "Governance", "description": "Governance token, voting power, and protocol parameters"},
 ]
 
 app = FastAPI(
@@ -161,6 +162,34 @@ def get_liquidity_mining_account(address: str):
         raise HTTPException(status_code=500, detail="Chain reader not initialized")
     try:
         result = chain.get_liquidity_mining_account(address)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid address")
+    return result
+
+
+@app.get(
+    "/governance",
+    tags=["Governance"],
+    summary="Get governance token and voting overview",
+)
+def get_governance(
+    account: Optional[str] = Query(
+        None,
+        description="Optional account address. When provided, include voting power and delegate for this account.",
+    ),
+):
+    """
+    Read-only governance overview for frontend:
+    - Token-level info (symbol, decimals, supply, maxSupply, minter)
+    - Governor parameters (voting delay/period, proposal threshold, quorum)
+    - Timelock parameters (min delay, version)
+    - Optional account voting data (balance, votes, delegate)
+    """
+    chain = getattr(app.state, "chain", None)
+    if not chain:
+        raise HTTPException(status_code=500, detail="Chain reader not initialized")
+    try:
+        result = chain.get_governance_overview(account)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid address")
     return result

@@ -23,12 +23,21 @@ class ChainReader:
         self.price_oracle_address = addresses.get("priceOracle")
         self.liquidity_mining_addresses = addresses.get("liquidityMining", [])
 
+        # Governance-related addresses (optional but recommended)
+        self.gov_token_address = addresses.get("governanceToken")
+        self.governor_address = addresses.get("protocolGovernor")
+        self.timelock_address = addresses.get("protocolTimelock")
+
         self.comptroller_abi = load_abi("Comptroller")
         self.market_abi = load_abi("LendingToken")
         self.erc20_abi = load_abi("ERC20")
         self.price_oracle_abi = load_abi("PriceOracle")
         self.rate_model_abi = load_abi("JumpRateModel")
         self.liquidity_mining_abi = load_abi("LiquidityMining")
+        # Governance ABIs
+        self.gov_token_abi = load_abi("GovernanceToken")
+        self.governor_abi = load_abi("ProtocolGovernor")
+        self.timelock_abi = load_abi("ProtocolTimelock")
 
         self.comptroller = self._build_contract(self.comptroller_address, self.comptroller_abi)
         self.price_oracle = self._build_contract(self.price_oracle_address, self.price_oracle_abi)
@@ -36,6 +45,10 @@ class ChainReader:
         self.liquidity_mining = self._build_liquidity_mining_contracts(
             self.liquidity_mining_addresses
         )
+        # Governance contracts
+        self.gov_token = self._build_contract(self.gov_token_address, self.gov_token_abi)
+        self.governor = self._build_contract(self.governor_address, self.governor_abi)
+        self.timelock = self._build_contract(self.timelock_address, self.timelock_abi)
 
     def _checksum(self, address: Optional[str]) -> Optional[str]:
         if not address:
@@ -650,6 +663,9 @@ class ChainReader:
             "chainId": self.w3.eth.chain_id,
             "comptroller": self.comptroller.address if self.comptroller else None,
             "priceOracle": self.price_oracle.address if self.price_oracle else None,
+            "governanceToken": self.gov_token.address if self.gov_token else None,
+            "protocolGovernor": self.governor.address if self.governor else None,
+            "protocolTimelock": self.timelock.address if self.timelock else None,
             "markets": [item["market"] for item in markets],
             "liquidityMining": [item["mining"] for item in liquidity_mining],
             "marketDetails": markets,
@@ -785,3 +801,60 @@ class ChainReader:
             "govBalance": gov_balance,
             "positions": results,
         }
+
+    def get_governance_overview(self, account: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Read-only governance overview:
+        - Token-level info (supply, maxSupply, minter)
+        - Governor parameters (voting delay/period, threshold, quorum)
+        - Timelock parameters (min delay)
+        - Optional account voting info (balance, votes, delegate)
+        """
+        if not self.gov_token:
+            # Governance not configured; return empty object to avoid 500.
+            return {}
+
+        token_info: Dict[str, Any] = {
+            "token": self.gov_token.address,
+            "symbol": self._call_fn(self.gov_token, "symbol"),
+            "decimals": self._call_fn(self.gov_token, "decimals"),
+            "totalSupply": self._call_fn(self.gov_token, "totalSupply"),
+            "maxSupply": self._call_fn(self.gov_token, "maxSupply"),
+            "minter": self._call_fn(self.gov_token, "minter"),
+        }
+
+        # Governor-wide parameters
+        if self.governor:
+            current_block = self.w3.eth.block_number
+            token_info["governor"] = {
+                "address": self.governor.address,
+                "votingDelay": self._call_fn(self.governor, "votingDelay"),
+                "votingPeriod": self._call_fn(self.governor, "votingPeriod"),
+                "proposalThreshold": self._call_fn(self.governor, "proposalThreshold"),
+                "quorum": self._call_fn(self.governor, "quorum", current_block),
+            }
+
+        # Timelock parameters
+        if self.timelock:
+            token_info["timelock"] = {
+                "address": self.timelock.address,
+                "minDelay": self._call_fn(self.timelock, "getMinDelay"),
+                "version": self._call_fn(self.timelock, "version"),
+            }
+
+        if account is None:
+            return token_info
+
+        checksum = self._checksum(account)
+        if not checksum:
+            raise ValueError("Invalid address")
+
+        account_info: Dict[str, Any] = {
+            "account": checksum,
+            "balance": self._call_fn(self.gov_token, "balanceOf", checksum),
+            "votes": self._call_fn(self.gov_token, "getVotes", checksum),
+            "delegate": self._call_fn(self.gov_token, "delegates", checksum),
+        }
+
+        token_info["account"] = account_info
+        return token_info
