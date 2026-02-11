@@ -8,6 +8,14 @@ interface PoolsTableProps {
 }
 
 export const PoolsTable: React.FC<PoolsTableProps> = ({ markets, loading }) => {
+  type NoticeType = 'success' | 'error' | 'info';
+  type Notice = {
+    type: NoticeType;
+    title: string;
+    message: string;
+    txHash?: string;
+  };
+
   const [sortKey, setSortKey] = useState<keyof Market>('totalSupply');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null);
@@ -15,6 +23,7 @@ export const PoolsTable: React.FC<PoolsTableProps> = ({ markets, loading }) => {
   const [userBalance, setUserBalance] = useState<string>('0');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSupplying, setIsSupplying] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
 
   const sortedMarkets = useMemo(() => {
     const sorted = [...markets].sort((a, b) => {
@@ -50,6 +59,14 @@ export const PoolsTable: React.FC<PoolsTableProps> = ({ markets, loading }) => {
       });
     }
   }, [isModalOpen, selectedMarket]);
+
+  useEffect(() => {
+    if (!notice) return undefined;
+    if (notice.type === 'error') return undefined;
+
+    const timer = setTimeout(() => setNotice(null), 8000);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   const formatValue = (value: number | null, decimals: number = 2): string => {
     if (value === null || value === undefined) return '-';
@@ -93,6 +110,51 @@ export const PoolsTable: React.FC<PoolsTableProps> = ({ markets, loading }) => {
 
   return (
     <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+      {notice && (
+        <div className="fixed right-4 top-24 z-[90] w-[min(92vw,460px)]">
+          <div
+            className={`rounded-xl border p-4 shadow-2xl backdrop-blur ${
+              notice.type === 'success'
+                ? 'border-emerald-400/40 bg-emerald-500/10'
+                : notice.type === 'error'
+                  ? 'border-rose-400/40 bg-rose-500/10'
+                  : 'border-sky-400/40 bg-sky-500/10'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p
+                  className={`text-sm font-semibold ${
+                    notice.type === 'success'
+                      ? 'text-emerald-200'
+                      : notice.type === 'error'
+                        ? 'text-rose-200'
+                        : 'text-sky-200'
+                  }`}
+                >
+                  {notice.title}
+                </p>
+                <p className="mt-1 text-sm text-slate-100">{notice.message}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNotice(null)}
+                className="rounded-md border border-slate-500/60 px-2 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700/60"
+              >
+                Dismiss
+              </button>
+            </div>
+
+            {notice.txHash && (
+              <div className="mt-3 rounded-lg border border-slate-600/60 bg-slate-950/60 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-400">Transaction hash</p>
+                <p className="mt-1 break-all font-mono text-xs text-slate-200">{notice.txHash}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-900 border-b border-slate-700">
@@ -276,7 +338,11 @@ export const PoolsTable: React.FC<PoolsTableProps> = ({ markets, loading }) => {
                   try {
                     setIsSupplying(true);
                     if (!selectedMarket.underlying) {
-                      alert('Underlying address not found');
+                      setNotice({
+                        type: 'error',
+                        title: 'Supply failed',
+                        message: 'Underlying token address not found for this market.',
+                      });
                       return;
                     }
 
@@ -286,12 +352,21 @@ export const PoolsTable: React.FC<PoolsTableProps> = ({ markets, loading }) => {
                       selectedMarket.underlying
                     );
 
-                    alert(`Supply successful!\nTransaction: ${txHash}`);
+                    setNotice({
+                      type: 'success',
+                      title: `Supply submitted: ${selectedMarket.symbol}`,
+                      message: `Successfully supplied ${supplyAmount} ${selectedMarket.symbol}.`,
+                      txHash,
+                    });
                     setIsModalOpen(false);
                     setSelectedMarket(null);
                     setSupplyAmount('');
                   } catch (error) {
-                    alert(`Supply failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    setNotice({
+                      type: 'error',
+                      title: 'Supply failed',
+                      message: error instanceof Error ? error.message : 'Unknown error',
+                    });
                   } finally {
                     setIsSupplying(false);
                   }
