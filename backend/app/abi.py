@@ -3,22 +3,31 @@ from pathlib import Path
 
 from .config import ABI_ROOT, REPO_ROOT
 
-# Fallback: Foundry puts ABIs in <repo>/out by default; ABI_ROOT may be wrong if env was set to a relative path
-_DEFAULT_ABI_ROOT = REPO_ROOT / "out"
+# Fallbacks cover both repo layouts:
+# - monorepo style: <repo>/contracts/out
+# - root foundry style: <repo>/out
+_DEFAULT_ABI_ROOTS = (REPO_ROOT / "contracts" / "out", REPO_ROOT / "out")
 
 
 def find_abi_file(contract_name: str) -> Path:
     pattern = f"{contract_name}.json"
-    for root in (ABI_ROOT, _DEFAULT_ABI_ROOT):
+    roots = []
+    for root in (ABI_ROOT, *_DEFAULT_ABI_ROOTS):
+        if root not in roots:
+            roots.append(root)
+
+    for root in roots:
         if not root.exists():
             continue
         for path in root.rglob(pattern):
             if path.is_file():
                 return path
+
+    looked_in = ", ".join(str(root) for root in roots)
     raise FileNotFoundError(
         f"ABI json not found for contract: {contract_name}. "
-        f"Looked in ABI_ROOT={ABI_ROOT} and {_DEFAULT_ABI_ROOT}. "
-        "Ensure Foundry build exists (e.g. forge build) and ABI_ROOT points to repo root / out (or leave unset)."
+        f"Looked in: {looked_in}. "
+        "Ensure Foundry build exists (e.g. forge build) and ABI_ROOT points to the foundry out directory."
     )
 
 

@@ -8,21 +8,58 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 REPO_ROOT = PROJECT_ROOT.parent
 CONFIG_PATH = PROJECT_ROOT / "config" / "addresses.local.json"
-# Foundry default: out/ and broadcast/ at repo root (not contracts/out)
-def _resolve_path(env_value: Optional[str], default: Path) -> Path:
-    if not env_value:
-        return default
-    p = Path(env_value).expanduser()
-    if not p.is_absolute():
-        p = (REPO_ROOT / p).resolve()
-    return p
+ENV_PATH = REPO_ROOT / ".env"
 
-_abi_root = os.getenv("ABI_ROOT")
-ABI_ROOT = _resolve_path(_abi_root, REPO_ROOT / "out")
-_broadcast_root = os.getenv("BROADCAST_ROOT")
-BROADCAST_ROOT = _resolve_path(_broadcast_root, REPO_ROOT / "broadcast")
 
-RPC_URL = os.getenv("RPC_URL", "http://127.0.0.1:8545")
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        value = value.strip().strip("'").strip('"')
+        os.environ.setdefault(key, value)
+
+
+_load_env_file(ENV_PATH)
+
+ABI_ROOT = (REPO_ROOT / "contracts" / "out").resolve()
+BROADCAST_ROOT = (REPO_ROOT / "contracts" / "broadcast").resolve()
+
+NETWORK = os.getenv("NETWORK", "sepolia").strip().lower()
+NETWORK_CHAIN_IDS = {
+    "anvil": "31337",
+    "sepolia": "11155111",
+}
+
+if NETWORK not in NETWORK_CHAIN_IDS:
+    raise ValueError(
+        f"Unsupported NETWORK '{NETWORK}'. Expected one of: {', '.join(sorted(NETWORK_CHAIN_IDS))}"
+    )
+
+DEPLOY_CHAIN_ID = os.getenv("DEPLOY_CHAIN_ID", NETWORK_CHAIN_IDS[NETWORK])
+ANVIL_RPC_URL = os.getenv("ANVIL_RPC_URL", "http://127.0.0.1:8545")
+SEPOLIA_RPC_URL = os.getenv("SEPOLIA_RPC_URL", "https://sepolia.infura.io/v3/YOUR_INFURA_API_KEY")
+NETWORK_RPC_URL = ANVIL_RPC_URL if NETWORK == "anvil" else SEPOLIA_RPC_URL
+RPC_URL = os.getenv("RPC_URL", NETWORK_RPC_URL)
+
+_run_json_env = os.getenv("RUN_JSON")
+if _run_json_env:
+    _run_json_path = Path(_run_json_env).expanduser()
+    if not _run_json_path.is_absolute():
+        _run_json_path = (REPO_ROOT / _run_json_path).resolve()
+    RUN_JSON = _run_json_path
+else:
+    RUN_JSON = (
+        BROADCAST_ROOT / "FullSetupLocal.s.sol" / DEPLOY_CHAIN_ID / "run-latest.json"
+    ).resolve()
+
 DB_PATH = os.getenv("DB_PATH", str(PROJECT_ROOT / "indexer.db"))
 POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "5"))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "1000"))
@@ -33,22 +70,7 @@ LIQUIDITY_MINING_ABI_NAME = os.getenv("LIQUIDITY_MINING_ABI_NAME", "LiquidityMin
 
 
 def _find_run_json_candidates() -> List[Path]:
-    explicit = os.getenv("RUN_JSON")
-    if explicit:
-        path = Path(explicit).expanduser()
-        if not path.is_absolute():
-            path = (REPO_ROOT / path).resolve()
-        return [path] if path.exists() else []
-
-    candidates: List[Path] = []
-    patterns = [
-        "FullSetupLocal.s.sol/*/run-latest.json",
-        "DeployProtocol.s.sol/*/run-latest.json",
-    ]
-    for pattern in patterns:
-        candidates.extend(BROADCAST_ROOT.glob(pattern))
-
-    return sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)
+    return [RUN_JSON] if RUN_JSON.exists() else []
 
 
 def _extract_addresses_from_run_json(path: Path) -> Optional[Dict[str, object]]:
@@ -171,6 +193,6 @@ def load_addresses() -> dict:
         return configured
 
     raise FileNotFoundError(
-        f"Unable to load addresses. No valid broadcast run json found under {BROADCAST_ROOT} "
+        f"Unable to load addresses. No valid broadcast run json found at {RUN_JSON} "
         f"and no readable config at {CONFIG_PATH}."
     )
