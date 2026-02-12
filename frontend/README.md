@@ -2,15 +2,20 @@
 
 React + Vite frontend for the Upgradable DeFi protocol.
 
-This app includes two product surfaces:
-- `Lending` (markets, positions, supply/borrow/repay/withdraw)
-- `Mining` (pools, stake/withdraw/claim rewards)
+## Features
+
+- Lending UI (`/lending/markets`, `/lending/positions`)
+- Liquidity mining UI (`/mining/pools`)
+- Wallet connect + wrong-network detection + one-click switch
+- Manual/automatic refresh flow after transactions
+- Backend-driven runtime contract discovery (`/contracts/addresses`)
 
 ## Requirements
 
 - Node.js 18+
-- Running backend API (`http://127.0.0.1:8000` for local default proxy)
-- MetaMask (or compatible EVM wallet)
+- npm 9+
+- Backend API running (local default: `http://127.0.0.1:8000`)
+- MetaMask or compatible EVM wallet
 
 ## Install
 
@@ -19,14 +24,24 @@ cd frontend
 npm install
 ```
 
-## Configuration
+## Run (development)
 
-Frontend runtime config is read in this order:
-1. Repo root `/.env_example` (`VITE_*` keys)
-2. `frontend/.env` fallback
-3. Built-in defaults in `frontend/vite.config.ts`
+```bash
+npm run dev
+```
 
-### Supported frontend env vars
+Default URL: `http://localhost:5173`
+
+## Environment configuration
+
+`frontend/vite.config.ts` resolves config in this order:
+
+1. Repo root `.env`
+2. `frontend/.env`
+3. Repo root `.env_example`
+4. Built-in defaults
+
+Supported env vars:
 
 ```env
 VITE_API_URL=/api
@@ -35,48 +50,30 @@ VITE_ANVIL_RPC_URL=http://127.0.0.1:8545
 VITE_SEPOLIA_RPC_URL=https://rpc.sepolia.org
 ```
 
-### Network switch
+Notes:
 
-Set in `/.env_example`:
+- `VITE_NETWORK` must be `anvil` or `sepolia`
+- `NETWORK`, `ANVIL_RPC_URL`, `SEPOLIA_RPC_URL` from root `.env` can also be used as fallbacks
 
-- `VITE_NETWORK=anvil` for chain `31337`
-- `VITE_NETWORK=sepolia` for chain `11155111`
+## API proxy behavior
 
-The app validates wallet chain and shows a `Switch to ...` action when wallet network does not match the configured target network.
+Vite proxies `/api/*`:
 
-## Run (Development)
-
-```bash
-npm run dev
-```
-
-Default URL: `http://localhost:5173`
-
-Vite proxies `/api/*` to backend based on `VITE_API_URL`.
 - If `VITE_API_URL=/api`, proxy target is `http://localhost:8000`
-- If `VITE_API_URL` is an absolute URL, proxy uses that URL
+- If `VITE_API_URL` is absolute (e.g. `https://api.example.com`), that URL is used as proxy target
 
-## Backend dependency
+## Backend endpoints used by frontend
 
-Frontend pages rely on backend endpoints such as:
-- `GET /markets`
+- `GET /health`
 - `GET /contracts/addresses`
 - `GET /protocol/upgrade-info`
+- `GET /markets`
+- `GET /markets/summary`
 - `GET /accounts/{address}`
+- `GET /account/overview`
+- `GET /account/wallet`
 - `GET /liquidity-mining`
-
-If backend is not running, frontend will show request errors.
-
-## Current UX behavior
-
-- Lending markets load once on page entry.
-- Markets refresh only when user clicks `Refresh`.
-- While refresh is in progress, UI shows non-blocking `Refreshing markets...` status.
-- Token address row supports one-click `Copy` for market assets (e.g. WETH/USDC underlying addresses).
-
-## Sepolia latency note
-
-On Sepolia, some backend calls can take 10-30s due on-chain RPC latency. Frontend API clients are configured with longer timeouts to avoid premature cancellation.
+- `GET /liquidity-mining/{address}`
 
 ## Scripts
 
@@ -88,11 +85,20 @@ npm run lint
 npm run type-check
 ```
 
-## Project structure (high level)
+## Project layout
 
-- `src/lending/*` Lending UI, hooks, and services
-- `src/mining/*` Mining UI, hooks, and services
-- `src/config/network.ts` target chain config + wallet network switching
-- `src/ProtocolUpgradeInfo.tsx` upgradeability metadata panel
-- `vite.config.ts` env resolution and API proxy behavior
+- `src/lending/` lending app UI, hooks, and services
+- `src/mining/` liquidity mining app UI, hooks, and services
+- `src/shared/` shared API client, hooks, utils, and types
+- `src/config/network.ts` chain targeting and wallet network-switch helpers
+- `src/App.tsx` top-level router and app switcher
+- `vite.config.ts` env resolution and `/api` proxy setup
 
+## Troubleshooting
+
+- "Wrong network" banner:
+  - Set `VITE_NETWORK` correctly and switch wallet to that chain
+- API request failures:
+  - Confirm backend is reachable at expected `VITE_API_URL` target
+- Slow responses on Sepolia:
+  - Backend RPC calls can take longer; frontend request timeout is set to 60s
